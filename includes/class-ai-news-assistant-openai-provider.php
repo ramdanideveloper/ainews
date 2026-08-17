@@ -16,7 +16,6 @@ class AI_News_Assistant_OpenAI_Provider extends AI_News_Assistant_Provider_Base 
 
 	public function generate( array $input ) {
 		if ( ! $this->is_configured() ) return new WP_Error( 'aina_missing_key', __( 'API key belum dikonfigurasi.', 'ai-news-assistant' ) );
-		$endpoint = ! empty( $this->settings['endpoint'] ) ? $this->settings['endpoint'] : 'https://api.openai.com/v1/chat/completions';
 		$system = 'Anda adalah asisten redaksi Indonesia. Gunakan editorial_data sebagai sumber utama naskah, jangan hanya mengembangkan judul dan jangan mengarang fakta. Field kosong harus dicatat dalam verification_notes. Jika sumber, waktu, lokasi, atau konfirmasi aparat yang relevan kosong, set review_status Needs Verification dan needs_verification true. Keluarkan JSON valid saja. Struktur wajib: main_title, alternative_titles (min 3), lead, content (HTML paragraf aman), summary_points, verification_notes, fact_checklist {who,what,when,where,why,how,source_available,needs_verification}, seo {seo_title,meta_description,slug,focus_keyword,tags,category_suggestion}, social_captions {instagram_facebook,twitter_x,whatsapp_telegram}, review_status (Ready/Needs Verification/Missing Source).';
 		$data = $this->request( array( array( 'role' => 'system', 'content' => $system ), array( 'role' => 'user', 'content' => wp_json_encode( $input ) ) ) );
 		if ( is_wp_error( $data ) ) return $data;
@@ -34,8 +33,36 @@ class AI_News_Assistant_OpenAI_Provider extends AI_News_Assistant_Provider_Base 
 		$body = json_decode( wp_remote_retrieve_body( $response ), true );
 		if ( $code < 200 || $code >= 300 ) return new WP_Error( 'aina_api_error', isset( $body['error']['message'] ) ? sanitize_text_field( $body['error']['message'] ) : sprintf( __( 'API merespons dengan kode %d.', 'ai-news-assistant' ), $code ) );
 		$content = isset( $body['choices'][0]['message']['content'] ) ? $body['choices'][0]['message']['content'] : '';
-		$data = json_decode( $content, true );
-		if ( ! is_array( $data ) ) return new WP_Error( 'aina_invalid_response', __( 'Respons AI bukan JSON yang valid.', 'ai-news-assistant' ) );
+		$data = $this->decode_json_content( $content );
+		if ( ! is_array( $data ) ) {
+			$finish_reason = isset( $body['choices'][0]['finish_reason'] ) ? sanitize_key( $body['choices'][0]['finish_reason'] ) : '';
+			if ( in_array( $finish_reason, array( 'length', 'max_tokens' ), true ) ) return new WP_Error( 'aina_truncated_response', __( 'Respons AI terpotong karena batas token. Pilih artikel lebih singkat atau gunakan model dengan batas output lebih besar.', 'ai-news-assistant' ) );
+			return new WP_Error( 'aina_invalid_response', __( 'Respons AI tidak dapat dibaca sebagai JSON. Silakan ulangi generate draft.', 'ai-news-assistant' ) );
+		}
 		return $data;
+	}
+	private function decode_json_content( $content ) {
+		if ( is_array( $content ) ) {
+			if ( isset( $content['main_title'] ) || isset( $content['news_type'] ) ) return $content;
+			$text = '';
+			foreach ( $content as $part ) {
+				if ( is_string( $part ) ) $text .= $part;
+				elseif ( is_array( $part ) && isset( $part['text'] ) ) $text .= (string) $part['text'];
+			}
+			$content = $text;
+		}
+		$content = trim( preg_replace( '/^\xEF\xBB\xBF/', '', (string) $content ) );
+		$data = json_decode( $content, true );
+		if ( is_array( $data ) ) return $data;
+		$content = preg_replace( '/^```(?:json)?\s*|\s*```$/i', '', $content );
+		$data = json_decode( trim( $content ), true );
+		if ( is_array( $data ) ) return $data;
+		$start = strpos( $content, '{' );
+		$end = strrpos( $content, '}' );
+		if ( false !== $start && false !== $end && $end > $start ) {
+			$data = json_decode( substr( $content, $start, $end - $start + 1 ), true );
+			if ( is_array( $data ) ) return $data;
+		}
+		return null;
 	}
 }
