@@ -69,7 +69,18 @@ class AI_News_Assistant_Post_Handler {
 		update_post_meta( $post_id, '_aina_seo', $this->clean_array( $seo ) );
 		update_post_meta( $post_id, '_aina_social_captions', $this->clean_array( isset( $data['social_captions'] ) ? $data['social_captions'] : array() ) );
 		update_post_meta( $post_id, '_aina_generation_notes', $this->clean_array( array( 'alternative_titles' => isset( $data['alternative_titles'] ) ? $data['alternative_titles'] : array(), 'summary_points' => isset( $data['summary_points'] ) ? $data['summary_points'] : array(), 'verification_notes' => isset( $data['verification_notes'] ) ? $data['verification_notes'] : array(), 'generated_at' => current_time( 'mysql' ) ) ) );
+		$this->sync_rank_math_meta( $post_id, $seo );
 		if ( ! empty( $seo['slug'] ) ) wp_update_post( array( 'ID' => $post_id, 'post_name' => sanitize_title( $seo['slug'] ) ) );
+	}
+	private function sync_rank_math_meta( $post_id, array $seo ) {
+		$settings = AI_News_Assistant::settings();
+		if ( empty( $settings['sync_rank_math'] ) || ! AI_News_Assistant::is_rank_math_active() ) return;
+		$map = array( 'seo_title' => 'rank_math_title', 'meta_description' => 'rank_math_description', 'focus_keyword' => 'rank_math_focus_keyword' );
+		foreach ( $map as $source_key => $meta_key ) {
+			if ( empty( $seo[ $source_key ] ) ) continue;
+			if ( empty( $settings['overwrite_rank_math'] ) && '' !== (string) get_post_meta( $post_id, $meta_key, true ) ) continue;
+			update_post_meta( $post_id, $meta_key, sanitize_text_field( $seo[ $source_key ] ) );
+		}
 	}
 	private function clean_array( $value ) {
 		if ( ! is_array( $value ) ) return sanitize_textarea_field( (string) $value );

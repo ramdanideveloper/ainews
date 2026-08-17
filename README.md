@@ -27,3 +27,7 @@ Persyaratan: WordPress modern, PHP 7.4 atau lebih baru.
 Pengaturan disimpan pada option `aina_settings`. Hasil editorial disimpan dalam post meta `_aina_review_status`, `_aina_fact_checklist`, `_aina_seo`, `_aina_social_captions`, dan `_aina_generation_notes`.
 
 API key hanya digunakan server-side melalui `wp_remote_post`; key tidak dilokalkan ke JavaScript dan field settings tidak menampilkan kembali nilainya.
+
+## Integrasi Rank Math SEO
+
+Jika Rank Math aktif, buka **AI News Assistant → Settings** dan aktifkan **Sync SEO to Rank Math**. Saat draft baru disimpan, SEO title, meta description, dan focus keyword disalin ke metadata Rank Math. Metadata Rank Math yang sudah terisi tidak ditimpa kecuali opsi overwrite diaktifkan. Integrasi tidak memproses posting lama.
