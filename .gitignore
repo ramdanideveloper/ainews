@@ -1,0 +1,33 @@
+# Operating system and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+auth.json
+*.key
+*.pem
+
+# Dependencies and generated files
+node_modules/
+vendor/
+coverage/
+*.log
+*.zip
+
+# WordPress/runtime artifacts
+wp-config.php
+.htaccess
+debug.log
+error_log
+
+# Local backups
+*.bak
+*.backup
+*~

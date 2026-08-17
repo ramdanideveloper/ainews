@@ -1,0 +1,70 @@
+<?php
+defined( 'ABSPATH' ) || exit;
+
+class AI_News_Assistant_Admin {
+	private $post_handler;
+	public function __construct( $post_handler ) {
+		$this->post_handler = $post_handler;
+		add_action( 'admin_menu', array( $this, 'menu' ) );
+		add_action( 'admin_enqueue_scripts', array( $this, 'assets' ) );
+		add_action( 'admin_init', array( $this, 'register_settings' ) );
+	}
+	public function menu() {
+		add_menu_page( __( 'AI News Assistant', 'ai-news-assistant' ), __( 'AI News Assistant', 'ai-news-assistant' ), 'edit_posts', 'ai-news-assistant', array( $this, 'dashboard' ), 'dashicons-media-document', 26 );
+		add_submenu_page( 'ai-news-assistant', __( 'Newsroom', 'ai-news-assistant' ), __( 'Newsroom', 'ai-news-assistant' ), 'edit_posts', 'ai-news-assistant', array( $this, 'dashboard' ) );
+		add_submenu_page( 'ai-news-assistant', __( 'Settings', 'ai-news-assistant' ), __( 'Settings', 'ai-news-assistant' ), 'manage_options', 'ai-news-assistant-settings', array( $this, 'settings_page' ) );
+	}
+	public function assets( $hook ) {
+		if ( false === strpos( $hook, 'ai-news-assistant' ) ) return;
+		$css_version = file_exists( AINA_DIR . 'assets/css/admin.css' ) ? (string) filemtime( AINA_DIR . 'assets/css/admin.css' ) : AINA_VERSION;
+		$js_version  = file_exists( AINA_DIR . 'assets/js/admin.js' ) ? (string) filemtime( AINA_DIR . 'assets/js/admin.js' ) : AINA_VERSION;
+		wp_enqueue_style( 'aina-admin', AINA_URL . 'assets/css/admin.css', array(), $css_version );
+		wp_enqueue_script( 'aina-admin', AINA_URL . 'assets/js/admin.js', array(), $js_version, true );
+		wp_localize_script( 'aina-admin', 'ainaAdmin', array( 'ajaxUrl' => admin_url( 'admin-ajax.php' ), 'nonce' => wp_create_nonce( 'aina_admin' ), 'generating' => __( 'Menyusun draft…', 'ai-news-assistant' ), 'saving' => __( 'Menyimpan…', 'ai-news-assistant' ), 'error' => __( 'Terjadi kesalahan. Silakan coba lagi.', 'ai-news-assistant' ), 'copy' => __( 'Salin Caption', 'ai-news-assistant' ), 'copied' => __( 'Tersalin!', 'ai-news-assistant' ) ) );
+	}
+	public function register_settings() { register_setting( 'aina_settings_group', 'aina_settings', array( 'sanitize_callback' => array( $this, 'sanitize_settings' ), 'default' => AI_News_Assistant::defaults() ) ); }
+	public function sanitize_settings( $input ) {
+		$old = AI_News_Assistant::settings();
+		$out = AI_News_Assistant::defaults();
+		$out['provider'] = 'openai';
+		$out['api_key'] = ! empty( $input['api_key'] ) ? sanitize_text_field( $input['api_key'] ) : $old['api_key'];
+		if ( ! empty( $input['clear_api_key'] ) ) $out['api_key'] = '';
+		$out['endpoint'] = ! empty( $input['endpoint'] ) ? esc_url_raw( $input['endpoint'] ) : $out['endpoint'];
+		$out['model'] = ! empty( $input['model'] ) ? sanitize_text_field( $input['model'] ) : $out['model'];
+		$out['language'] = ! empty( $input['language'] ) ? sanitize_text_field( $input['language'] ) : 'Indonesian';
+		$out['tone'] = ! empty( $input['tone'] ) ? sanitize_text_field( $input['tone'] ) : $out['tone'];
+		$out['post_status'] = isset( $input['post_status'] ) && in_array( $input['post_status'], array( 'draft', 'pending' ), true ) ? $input['post_status'] : 'draft';
+		$out['require_checklist'] = empty( $input['require_checklist'] ) ? 0 : 1;
+		add_settings_error( 'aina_settings', 'saved', __( 'Pengaturan berhasil disimpan.', 'ai-news-assistant' ), 'success' );
+		return $out;
+	}
+	private function stats() {
+		$drafts = new WP_Query( array( 'post_type' => 'post', 'post_status' => 'draft', 'meta_key' => AI_News_Assistant_Post_Handler::GENERATED_META, 'meta_value' => 1, 'fields' => 'ids', 'posts_per_page' => 1 ) );
+		$pending = new WP_Query( array( 'post_type' => 'post', 'post_status' => 'pending', 'meta_key' => AI_News_Assistant_Post_Handler::GENERATED_META, 'meta_value' => 1, 'fields' => 'ids', 'posts_per_page' => 1 ) );
+		$recent = get_posts( array( 'post_type' => 'post', 'post_status' => array( 'draft', 'pending' ), 'meta_key' => AI_News_Assistant_Post_Handler::GENERATED_META, 'meta_value' => 1, 'posts_per_page' => 5 ) );
+		return array( $drafts->found_posts, $pending->found_posts, $recent );
+	}
+	public function dashboard() {
+		if ( ! current_user_can( 'edit_posts' ) ) wp_die( esc_html__( 'Anda tidak memiliki izin.', 'ai-news-assistant' ) );
+		list( $drafts, $pending, $recent ) = $this->stats(); $demo = empty( AI_News_Assistant::settings()['api_key'] );
+		?>
+		<div class="wrap aina-wrap">
+			<header class="aina-header"><div><span class="aina-eyebrow"><?php esc_html_e( 'NEWSROOM WORKSPACE', 'ai-news-assistant' ); ?></span><h1><?php esc_html_e( 'AI News Assistant', 'ai-news-assistant' ); ?></h1><p><?php esc_html_e( 'Susun draft, periksa fakta, dan siapkan materi distribusi dalam satu alur redaksi.', 'ai-news-assistant' ); ?></p></div><a class="button button-primary aina-primary" href="#aina-generator"><?php esc_html_e( 'Buat Draft Berita', 'ai-news-assistant' ); ?></a></header>
+			<div class="aina-status <?php echo $demo ? 'is-demo' : 'is-connected'; ?>"><span class="aina-dot"></span><strong><?php echo $demo ? esc_html__( 'Demo Mode', 'ai-news-assistant' ) : esc_html__( 'API Connected', 'ai-news-assistant' ); ?></strong><span><?php echo $demo ? esc_html__( 'Menggunakan respons mock karena API key belum dikonfigurasi.', 'ai-news-assistant' ) : esc_html__( 'OpenAI-compatible provider siap digunakan.', 'ai-news-assistant' ); ?></span></div>
+			<section class="aina-stats"><div><span><?php esc_html_e( 'Draft AI', 'ai-news-assistant' ); ?></span><strong><?php echo esc_html( number_format_i18n( $drafts ) ); ?></strong></div><div><span><?php esc_html_e( 'Pending Review', 'ai-news-assistant' ); ?></span><strong><?php echo esc_html( number_format_i18n( $pending ) ); ?></strong></div><div class="aina-recent"><span><?php esc_html_e( 'Artikel Terakhir', 'ai-news-assistant' ); ?></span><?php if ( $recent ) : ?><a href="<?php echo esc_url( get_edit_post_link( $recent[0]->ID ) ); ?>"><?php echo esc_html( get_the_title( $recent[0] ) ); ?></a><?php else : ?><em><?php esc_html_e( 'Belum ada draft', 'ai-news-assistant' ); ?></em><?php endif; ?></div></section>
+			<nav class="aina-progress" aria-label="<?php esc_attr_e( 'Tahapan editorial', 'ai-news-assistant' ); ?>"><span class="is-active"><b>1</b><?php esc_html_e( 'Judul & Deteksi', 'ai-news-assistant' ); ?></span><span><b>2</b><?php esc_html_e( 'Form Redaksi Adaptif', 'ai-news-assistant' ); ?></span><span><b>3</b><?php esc_html_e( 'Draft Editorial', 'ai-news-assistant' ); ?></span><span><b>4</b><?php esc_html_e( 'Review & Distribusi', 'ai-news-assistant' ); ?></span></nav>
+			<section class="aina-panel aina-smart-form" id="aina-generator">
+				<div class="aina-section-head"><div><span class="aina-step">01</span><h2><?php esc_html_e( 'Judul & Deteksi Jenis Berita', 'ai-news-assistant' ); ?></h2></div><p><?php esc_html_e( 'Mulai dari ide berita. Asisten akan menyiapkan daftar fakta yang relevan untuk dihimpun.', 'ai-news-assistant' ); ?></p></div>
+				<form id="aina-detect-form" action="javascript:void(0)" novalidate><label><?php esc_html_e( 'Judul sementara / ide berita', 'ai-news-assistant' ); ?><span>*</span><input type="text" name="title" placeholder="Contoh: Pemuda mabuk sambil pamer celurit diamuk warga" required></label><button type="submit" class="button button-primary aina-primary" id="aina-detect"><?php esc_html_e( 'Deteksi Jenis Berita', 'ai-news-assistant' ); ?></button><div class="aina-message" id="aina-detect-message" role="status" aria-live="polite"></div></form>
+				<div id="aina-detection-result"></div>
+			</section>
+			<section class="aina-panel aina-adaptive-panel" id="aina-adaptive" hidden><div class="aina-section-head"><div><span class="aina-step">02</span><h2><?php esc_html_e( 'Form Redaksi Adaptif', 'ai-news-assistant' ); ?></h2></div><p><?php esc_html_e( 'Isi fakta yang sudah dihimpun. Field berubah mengikuti jenis berita.', 'ai-news-assistant' ); ?></p></div><form id="aina-generate-form"><div class="aina-override"><label><?php esc_html_e( 'Jenis berita', 'ai-news-assistant' ); ?><select id="aina-news-type" name="news_type"><option value="incident">Peristiwa</option><option value="government">Pemerintahan</option><option value="business">Bisnis</option><option value="feature">Feature</option><option value="event">Event</option><option value="advertorial">Advertorial</option><option value="explainer">Explainer</option></select></label><span><?php esc_html_e( 'Editor dapat mengganti hasil deteksi.', 'ai-news-assistant' ); ?></span></div><div id="aina-adaptive-fields"></div><div class="aina-field-row"><label><?php esc_html_e( 'Gaya penulisan', 'ai-news-assistant' ); ?><select name="style"><option value="hard_news">Hard News</option><option value="soft_news">Soft News</option><option value="feature">Feature</option><option value="press_release">Press Release Rewrite</option><option value="seo_news">SEO News</option></select></label><label><?php esc_html_e( 'Panjang artikel', 'ai-news-assistant' ); ?><select name="length"><option value="short">Singkat</option><option value="medium" selected>Sedang</option><option value="long">Panjang</option></select></label></div><div class="aina-actions"><button type="button" class="button" id="aina-check-missing"><?php esc_html_e( 'Cek Data Kurang', 'ai-news-assistant' ); ?></button><button type="submit" class="button button-primary aina-primary" id="aina-generate"><?php esc_html_e( 'Generate Draft', 'ai-news-assistant' ); ?></button></div><div id="aina-missing-result"></div><div class="aina-message" id="aina-message" role="status" aria-live="polite"></div></form></section>
+			<section class="aina-panel aina-output-panel" id="aina-output" hidden></section>
+			<?php if ( $recent ) : ?><section class="aina-panel aina-list"><h2><?php esc_html_e( 'Draft terbaru', 'ai-news-assistant' ); ?></h2><table><thead><tr><th><?php esc_html_e( 'Judul', 'ai-news-assistant' ); ?></th><th><?php esc_html_e( 'Status', 'ai-news-assistant' ); ?></th><th><?php esc_html_e( 'Tanggal', 'ai-news-assistant' ); ?></th></tr></thead><tbody><?php foreach ( $recent as $post ) : ?><tr><td><a href="<?php echo esc_url( get_edit_post_link( $post->ID ) ); ?>"><?php echo esc_html( get_the_title( $post ) ); ?></a></td><td><?php echo esc_html( get_post_status_object( $post->post_status )->label ); ?></td><td><?php echo esc_html( get_the_date( '', $post ) ); ?></td></tr><?php endforeach; ?></tbody></table></section><?php endif; ?>
+		</div><?php
+	}
+	public function settings_page() {
+		if ( ! current_user_can( 'manage_options' ) ) wp_die( esc_html__( 'Anda tidak memiliki izin.', 'ai-news-assistant' ) ); $s = AI_News_Assistant::settings(); ?>
+		<div class="wrap aina-wrap aina-settings"><header class="aina-header"><div><span class="aina-eyebrow"><?php esc_html_e( 'CONFIGURATION', 'ai-news-assistant' ); ?></span><h1><?php esc_html_e( 'AI News Assistant Settings', 'ai-news-assistant' ); ?></h1><p><?php esc_html_e( 'Konfigurasi provider dan aturan default workflow redaksi.', 'ai-news-assistant' ); ?></p></div></header><?php settings_errors( 'aina_settings' ); ?><form method="post" action="options.php" class="aina-panel"><?php settings_fields( 'aina_settings_group' ); ?><table class="form-table" role="presentation"><tr><th><?php esc_html_e( 'API provider', 'ai-news-assistant' ); ?></th><td><select name="aina_settings[provider]"><option value="openai">OpenAI-compatible</option></select></td></tr><tr><th><label for="aina-key"><?php esc_html_e( 'API key', 'ai-news-assistant' ); ?></label></th><td><input id="aina-key" type="password" autocomplete="new-password" name="aina_settings[api_key]" value="" placeholder="<?php echo esc_attr( $s['api_key'] ? '•••••••••••••••• (tersimpan)' : 'sk-...' ); ?>"><p class="description"><?php esc_html_e( 'Key tersimpan tidak pernah ditampilkan kembali dan tidak dikirim ke browser frontend.', 'ai-news-assistant' ); ?></p><?php if ( $s['api_key'] ) : ?><label><input type="checkbox" name="aina_settings[clear_api_key]" value="1"> <?php esc_html_e( 'Hapus API key tersimpan', 'ai-news-assistant' ); ?></label><?php endif; ?></td></tr><tr><th><label for="aina-endpoint"><?php esc_html_e( 'Endpoint', 'ai-news-assistant' ); ?></label></th><td><input class="regular-text" id="aina-endpoint" type="url" name="aina_settings[endpoint]" value="<?php echo esc_attr( $s['endpoint'] ); ?>"></td></tr><tr><th><label for="aina-model"><?php esc_html_e( 'Model', 'ai-news-assistant' ); ?></label></th><td><input class="regular-text" id="aina-model" name="aina_settings[model]" value="<?php echo esc_attr( $s['model'] ); ?>"></td></tr><tr><th><?php esc_html_e( 'Bahasa default', 'ai-news-assistant' ); ?></th><td><input class="regular-text" name="aina_settings[language]" value="<?php echo esc_attr( $s['language'] ); ?>"></td></tr><tr><th><?php esc_html_e( 'Tone default', 'ai-news-assistant' ); ?></th><td><input class="regular-text" name="aina_settings[tone]" value="<?php echo esc_attr( $s['tone'] ); ?>"></td></tr><tr><th><?php esc_html_e( 'Status post default', 'ai-news-assistant' ); ?></th><td><select name="aina_settings[post_status]"><option value="draft" <?php selected( $s['post_status'], 'draft' ); ?>>Draft</option><option value="pending" <?php selected( $s['post_status'], 'pending' ); ?>>Pending Review</option></select><p class="description"><?php esc_html_e( 'Plugin tidak pernah mem-publish artikel secara otomatis.', 'ai-news-assistant' ); ?></p></td></tr><tr><th><?php esc_html_e( 'Fact checklist', 'ai-news-assistant' ); ?></th><td><label><input type="checkbox" name="aina_settings[require_checklist]" value="1" <?php checked( $s['require_checklist'] ); ?>> <?php esc_html_e( 'Wajib tersedia sebelum draft disimpan', 'ai-news-assistant' ); ?></label></td></tr></table><?php submit_button(); ?></form></div><?php
+	}
+}
