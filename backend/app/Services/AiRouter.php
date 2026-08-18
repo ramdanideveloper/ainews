@@ -35,6 +35,9 @@ class AiRouter
         }$models = $q->orderBy('priority')->orderBy('fallback_order')->get();
         $errors = [];
         foreach ($models as $model) {
+            if (count($errors) >= 2) {
+                break;
+            }
             if ($this->overLimit($model)) {
                 continue;
             }try {

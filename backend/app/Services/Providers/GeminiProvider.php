@@ -13,7 +13,7 @@ class GeminiProvider implements AiProviderInterface
     {
         $url = $this->chatUrl($p->base_url);
         $model = preg_replace('#^models/#', '', trim($p->model_id));
-        $r = Http::connectTimeout(10)->timeout(70)->withToken($p->api_key)->post($url, ['model' => $model, 'messages' => $messages, 'reasoning_effort' => $options['reasoning_effort'] ?? 'low', 'max_completion_tokens' => $options['max_completion_tokens'] ?? 6000, 'response_format' => ['type' => 'json_object']]);
+        $r = Http::connectTimeout(8)->timeout(40)->withToken($p->api_key)->post($url, ['model' => $model, 'messages' => $messages, 'reasoning_effort' => $options['reasoning_effort'] ?? 'low', 'max_completion_tokens' => $options['max_completion_tokens'] ?? 6000, 'response_format' => ['type' => 'json_object']]);
         if (! $r->successful()) {
             $message = $r->json('error.message') ?: trim($r->body());
             throw new RuntimeException((string) ($message ?: "Gemini request failed with HTTP {$r->status()} for model {$model} at {$url}"));
