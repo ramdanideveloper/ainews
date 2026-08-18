@@ -27,6 +27,7 @@ class GeminiProviderTest extends TestCase
         (new GeminiProvider)->text($provider, [['role' => 'user', 'content' => 'Test']]);
 
         Http::assertSent(fn ($request) => $request->url() === 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
-            && $request['model'] === 'gemini-2.5-flash');
+            && $request['model'] === 'gemini-2.5-flash'
+            && $request['reasoning_effort'] === 'low');
     }
 }
