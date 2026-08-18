@@ -10,13 +10,16 @@ final class AI_News_Assistant {
 		return self::$instance;
 	}
 	private function __construct() {
+		$this->remove_legacy_provider_credentials();
 		$this->post_handler = new AI_News_Assistant_Post_Handler();
 		if ( is_admin() ) $this->admin = new AI_News_Assistant_Admin( $this->post_handler );
 	}
 	public static function defaults() {
-		return array( 'provider' => 'openai', 'api_key' => '', 'endpoint' => 'https://api.openai.com/v1/chat/completions', 'model' => 'gpt-4o-mini', 'language' => 'Indonesian', 'tone' => 'Netral dan faktual', 'post_status' => 'draft', 'require_checklist' => 1, 'sync_rank_math' => 0, 'overwrite_rank_math' => 0 );
+		return array( 'backend_url' => '', 'account_token' => '', 'site_token' => '', 'provider' => 'backend', 'api_key' => '', 'endpoint' => '', 'model' => 'Backend managed', 'language' => 'Indonesian', 'tone' => 'Netral dan faktual', 'post_status' => 'draft', 'require_checklist' => 1, 'sync_rank_math' => 0, 'overwrite_rank_math' => 0 );
 	}
 	public static function settings() { return wp_parse_args( get_option( 'aina_settings', array() ), self::defaults() ); }
 	public static function is_rank_math_active() { return defined( 'RANK_MATH_VERSION' ) || class_exists( 'RankMath' ) || class_exists( 'RankMath\\Helper' ); }
-	public static function activate() { add_option( 'aina_settings', self::defaults() ); }
+	public static function install_id() { $id = get_option( 'aina_install_id' ); if ( ! $id ) { $id = wp_generate_uuid4(); add_option( 'aina_install_id', $id, '', false ); } return $id; }
+	public static function activate() { add_option( 'aina_settings', self::defaults() ); self::install_id(); }
+	private function remove_legacy_provider_credentials() { $settings = get_option( 'aina_settings', array() ); if ( ! empty( $settings['api_key'] ) || ! empty( $settings['endpoint'] ) ) { $settings['api_key'] = ''; $settings['endpoint'] = ''; $settings['model'] = 'Backend managed'; $settings['provider'] = 'backend'; update_option( 'aina_settings', $settings ); } }
 }

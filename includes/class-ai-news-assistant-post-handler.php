@@ -38,7 +38,7 @@ class AI_News_Assistant_Post_Handler {
 	}
 	public function provider() {
 		$settings = AI_News_Assistant::settings();
-		return empty( $settings['api_key'] ) ? new AI_News_Assistant_Mock_Provider() : new AI_News_Assistant_OpenAI_Provider( $settings );
+		return new AI_News_Assistant_Backend_Provider( $settings );
 	}
 	public function ajax_generate() {
 		$this->check_ajax();
@@ -46,7 +46,7 @@ class AI_News_Assistant_Post_Handler {
 		if ( '' === $input['title'] || '' === $input['news_type'] || empty( $input['editorial_data'] ) ) wp_send_json_error( array( 'message' => __( 'Deteksi jenis berita dan isi form redaksi sebelum membuat draft.', 'ai-news-assistant' ) ), 400 );
 		$result = $this->provider()->generate( $input );
 		if ( is_wp_error( $result ) ) wp_send_json_error( array( 'message' => $result->get_error_message() ), 500 );
-		wp_send_json_success( array( 'draft' => $result, 'demo' => empty( AI_News_Assistant::settings()['api_key'] ) ) );
+		wp_send_json_success( array( 'draft' => $result, 'demo' => empty( AI_News_Assistant::settings()['site_token'] ) ) );
 	}
 	public function ajax_save_draft() {
 		$this->check_ajax();

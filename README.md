@@ -7,7 +7,7 @@ Plugin WordPress dengan Smart News Form untuk mendeteksi jenis berita, memandu w
 1. Salin folder ini sebagai `wp-content/plugins/ai-news-assistant`.
 2. Aktifkan **AI News Assistant** dari menu Plugins WordPress.
 3. Buka **AI News Assistant → Settings**.
-4. Opsional: isi API key, endpoint chat-completions yang OpenAI-compatible, dan model. Tanpa API key, plugin otomatis memakai Demo Mode.
+4. Isi Backend URL pada **Account & Backend**. Guest dapat mencoba 10 kali; register mendapat welcome credit Rp5.000 dan Connected Site token dibuat otomatis.
 
 Persyaratan: WordPress modern, PHP 7.4 atau lebih baru.
 
@@ -26,8 +26,12 @@ Persyaratan: WordPress modern, PHP 7.4 atau lebih baru.
 
 Pengaturan disimpan pada option `aina_settings`. Hasil editorial disimpan dalam post meta `_aina_review_status`, `_aina_fact_checklist`, `_aina_seo`, `_aina_social_captions`, dan `_aina_generation_notes`.
 
-API key hanya digunakan server-side melalui `wp_remote_post`; key tidak dilokalkan ke JavaScript dan field settings tidak menampilkan kembali nilainya.
+Plugin tidak menyimpan API key Gemini/OpenAI. Semua request dikirim ke backend SaaS menggunakan guest install ID atau Connected Site token; provider key hanya disimpan terenkripsi pada backend.
 
 ## Integrasi Rank Math SEO
 
 Jika Rank Math aktif, buka **AI News Assistant → Settings** dan aktifkan **Sync SEO to Rank Math**. Saat draft baru disimpan, SEO title, meta description, dan focus keyword disalin ke metadata Rank Math. Metadata Rank Math yang sudah terisi tidak ditimpa kecuali opsi overwrite diaktifkan. Integrasi tidak memproses posting lama.
+
+## Backend SaaS
+
+Backend Laravel berada di folder `backend/` dan harus di-deploy terpisah pada subdomain API dengan document root ke `backend/public`. Jalankan migration/seeder sesuai `backend/README.md`, tambahkan provider Gemini/OpenAI di Filament, lalu isi URL tersebut pada **AI News Assistant → Account & Backend**. Plugin versi 2 tidak lagi menyimpan API key provider.

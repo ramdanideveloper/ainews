@@ -2,7 +2,7 @@
 /**
  * Plugin Name: AI News Assistant
  * Description: Workflow redaksi untuk membuat, memeriksa, dan menyimpan draft berita berbantuan AI.
- * Version: 1.3.0
+ * Version: 2.0.0
  * Requires at least: 6.2
  * Requires PHP: 7.4
  * Author: AI News Assistant
@@ -11,14 +11,13 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'AINA_VERSION', '1.3.0' );
+define( 'AINA_VERSION', '2.0.0' );
 define( 'AINA_FILE', __FILE__ );
 define( 'AINA_DIR', plugin_dir_path( __FILE__ ) );
 define( 'AINA_URL', plugin_dir_url( __FILE__ ) );
 
 require_once AINA_DIR . 'includes/class-ai-news-assistant-provider.php';
-require_once AINA_DIR . 'includes/class-ai-news-assistant-mock-provider.php';
-require_once AINA_DIR . 'includes/class-ai-news-assistant-openai-provider.php';
+require_once AINA_DIR . 'includes/class-ai-news-assistant-backend-provider.php';
 require_once AINA_DIR . 'includes/class-ai-news-assistant-post-handler.php';
 require_once AINA_DIR . 'includes/class-ai-news-assistant-admin.php';
 require_once AINA_DIR . 'includes/class-ai-news-assistant.php';
