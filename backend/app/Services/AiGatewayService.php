@@ -17,7 +17,10 @@ class AiGatewayService
     {
         $messages = [['role' => 'system', 'content' => $this->systemPrompt($type)], ['role' => 'user', 'content' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]];
         try {
-            $result = $this->router->text($type, $messages);
+            $result = $this->router->text($type, $messages, [
+                'reasoning_effort' => 'low',
+                'max_completion_tokens' => $type === 'detect_news_type' ? 1200 : 6000,
+            ]);
             $in = $result['input_tokens'] ?: $this->billing->estimateTokens(json_encode($messages));
             $out = $result['output_tokens'] ?: $this->billing->estimateTokens($result['content']);
             $bill = $this->billing->textCharge($in, $out, $result['provider_model']);

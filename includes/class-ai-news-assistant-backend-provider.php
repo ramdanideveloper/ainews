@@ -16,7 +16,7 @@ class AI_News_Assistant_Backend_Provider extends AI_News_Assistant_Provider_Base
 		$base = untrailingslashit( $this->settings['backend_url'] ); $site_token = $this->settings['site_token'] ?? '';
 		if ( $site_token ) { $paths = array( 'detect_news_type' => 'detect-news-type', 'generate_news' => 'generate-news' ); $url = $base . '/api/ai/' . $paths[ $type ]; $body = $payload; $headers = array( 'Authorization' => 'Bearer ' . $site_token, 'X-Site-URL' => home_url(), 'Content-Type' => 'application/json', 'Accept' => 'application/json' ); }
 		else { $url = $base . '/api/guest/generate'; $body = array( 'install_id' => AI_News_Assistant::install_id(), 'site_url' => home_url(), 'plugin_version' => AINA_VERSION, 'request_type' => $type, 'payload' => $payload ); $headers = array( 'Content-Type' => 'application/json', 'Accept' => 'application/json' ); }
-		$response = wp_remote_post( esc_url_raw( $url ), array( 'timeout' => 150, 'headers' => $headers, 'body' => wp_json_encode( $body ) ) );
+		$response = wp_remote_post( esc_url_raw( $url ), array( 'timeout' => 170, 'headers' => $headers, 'body' => wp_json_encode( $body ) ) );
 		if ( is_wp_error( $response ) ) return $response; $json = json_decode( wp_remote_retrieve_body( $response ), true );
 		if ( ! is_array( $json ) || empty( $json['success'] ) ) return new WP_Error( isset( $json['code'] ) ? sanitize_key( $json['code'] ) : 'aina_backend_error', isset( $json['message'] ) ? sanitize_text_field( $json['message'] ) : __( 'Backend tidak memberikan respons valid.', 'ai-news-assistant' ) );
 		return isset( $json['data'] ) && is_array( $json['data'] ) ? $json['data'] : array();
