@@ -74,18 +74,30 @@ abstract class AI_News_Assistant_Provider_Base implements AI_News_Assistant_Prov
 		$slug = sanitize_title( $keyword . ' ' . $data['seo']['slug'] );
 		$data['seo']['slug'] = trim( $this->limit_text( $slug, 60, '' ), '-' );
 
-		$plain_content = wp_strip_all_tags( $data['content'] );
-		if ( false === stripos( substr( $plain_content, 0, 250 ), $keyword ) ) {
-			$replacement = '<p$1><strong>' . esc_html( ucfirst( $keyword ) ) . '</strong> — ';
-			$data['content'] = preg_replace( '/<p([^>]*)>/i', $replacement, $data['content'], 1, $replaced );
-			if ( empty( $replaced ) ) $data['content'] = '<p><strong>' . esc_html( ucfirst( $keyword ) ) . '</strong></p>' . $data['content'];
-		}
-		if ( ! preg_match( '/<h2[^>]*>[^<]*' . preg_quote( $keyword, '/' ) . '[^<]*<\/h2>/iu', $data['content'] ) ) {
-			$heading = '<h2>' . esc_html( ucfirst( $keyword ) ) . ': fakta utama</h2>';
-			$data['content'] = preg_replace( '/<\/p>/i', '</p>' . $heading, $data['content'], 1, $heading_added );
-			if ( empty( $heading_added ) ) $data['content'] .= $heading;
-		}
+		$data['content'] = $this->format_editorial_content( $data['content'], $data['lead'], $input );
 		return $data;
+	}
+	private function format_editorial_content( $content, $lead, array $input ) {
+		$content = (string) $content;
+		$content = preg_replace( '/<h[1-3][^>]*>\s*[^<]*(?:fakta utama|ringkasan utama|poin utama)[^<]*<\/h[1-3]>\s*/iu', '', $content );
+		$host = (string) wp_parse_url( home_url( '/' ), PHP_URL_HOST );
+		$host = preg_replace( '/^www\./i', '', $host );
+		$location = $this->editorial_dateline( isset( $input['editorial_data'] ) ? (array) $input['editorial_data'] : array() );
+		$prefix = '<strong><a href="' . esc_url( home_url( '/' ) ) . '">' . esc_html( $host ) . '</a>';
+		if ( '' !== $location ) $prefix .= ' | ' . esc_html( $location );
+		$prefix .= '</strong> – ';
+		$lead_text = trim( wp_strip_all_tags( (string) $lead ) );
+		$opening = '<p>' . $prefix . esc_html( $lead_text ) . '</p>';
+		if ( '' !== $host && false !== stripos( wp_strip_all_tags( $content ), $host ) ) return $content;
+		return $opening . $content;
+	}
+	private function editorial_dateline( array $editorial_data ) {
+		$location = isset( $editorial_data['location'] ) ? sanitize_text_field( $editorial_data['location'] ) : '';
+		if ( '' === $location ) return '';
+		if ( preg_match( '/(?:Kecamatan|Kec\.?|Kelurahan|Desa)\s+([^,]+)/iu', $location, $match ) ) $location = $match[1];
+		elseif ( preg_match( '/(?:Kabupaten|Kota)\s+([^,]+)/iu', $location, $match ) ) $location = $match[1];
+		else $location = trim( explode( ',', $location )[0] );
+		return function_exists( 'mb_strtoupper' ) ? mb_strtoupper( trim( $location ), 'UTF-8' ) : strtoupper( trim( $location ) );
 	}
 	private function limit_text( $text, $limit, $suffix = '' ) {
 		$text = trim( (string) $text );

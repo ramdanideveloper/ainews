@@ -98,7 +98,7 @@ class AiGatewayService
             return 'Anda adalah editor berita Indonesia. Klasifikasikan judul tanpa mengarang fakta. Keluarkan JSON valid tanpa markdown dengan fields: news_type (incident/government/business/feature/event/advertorial/explainer), news_type_label, subtype, confidence (0-100), required_data (array), warnings (array), review_status. Berikan warning privasi, anak, korban, praduga tak bersalah, atau verifikasi aparat jika relevan.';
         }
 
-        return 'Anda adalah AI News Assistant. Request type: '.$type.'. Gunakan hanya fakta input, tandai data kosong untuk verifikasi, dan keluarkan JSON valid tanpa markdown dengan fields: title, alternative_titles, lead, content_html, fact_checklist, seo_title, meta_description, focus_keyword, slug, tags, category_suggestion, social_captions, review_status. Jangan mempublikasikan atau mengarang fakta.';
+        return 'Anda adalah redaktur berita Indonesia. Request type: '.$type.'. Gunakan hanya fakta input dan tandai data kosong untuk verifikasi. Tulis lead ringkas yang langsung memuat fakta terpenting. content_html hanya berisi paragraf lanjutan dengan tag <p>, tanpa mengulang judul atau lead, tanpa heading generik seperti "fakta utama", tanpa nama domain, dan tanpa markdown. Kutipan langsung ditulis sebagai paragraf tersendiri menggunakan tanda kutip Indonesia. Keluarkan JSON valid dengan fields: title, alternative_titles, lead, content_html, fact_checklist, seo_title, meta_description, focus_keyword, slug, tags, category_suggestion, social_captions, review_status. Jangan mempublikasikan atau mengarang fakta.';
     }
 
     private function size(string $ratio): string
