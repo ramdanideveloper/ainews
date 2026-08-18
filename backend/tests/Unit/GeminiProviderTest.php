@@ -49,6 +49,7 @@ class GeminiProviderTest extends TestCase
 
         $this->assertSame('aW1hZ2U=', $result['image_base64']);
         Http::assertSent(fn ($request) => str_starts_with($request->url(), 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent')
-            && data_get($request->data(), 'generationConfig.responseFormat.image.aspectRatio') === '16:9');
+            && data_get($request->data(), 'generationConfig.imageConfig.aspectRatio') === '16:9'
+            && data_get($request->data(), 'generationConfig.responseFormat') === null);
     }
 }

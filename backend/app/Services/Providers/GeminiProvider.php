@@ -27,7 +27,7 @@ class GeminiProvider implements AiProviderInterface
         $base = preg_replace('#/openai(?:/.*)?$#', '', rtrim($p->base_url ?: 'https://generativelanguage.googleapis.com/v1beta', '/'));
         $model = preg_replace('#^models/#', '', trim($p->model_id));
         $url = $base.'/models/'.$model.':generateContent?key='.urlencode($p->api_key);
-        $r = Http::connectTimeout(8)->timeout(80)->post($url, ['contents' => [['parts' => [['text' => $payload['prompt']]]]], 'generationConfig' => ['responseModalities' => ['TEXT', 'IMAGE'], 'responseFormat' => ['image' => ['aspectRatio' => $payload['aspect_ratio'] ?? '1:1']]]]);
+        $r = Http::connectTimeout(8)->timeout(80)->post($url, ['contents' => [['parts' => [['text' => $payload['prompt']]]]], 'generationConfig' => ['responseModalities' => ['TEXT', 'IMAGE'], 'imageConfig' => ['aspectRatio' => $payload['aspect_ratio'] ?? '1:1']]]);
         if (! $r->successful()) {
             throw new RuntimeException((string) ($r->json('error.message') ?: 'Gemini image request failed'));
         }$j = $r->json();
