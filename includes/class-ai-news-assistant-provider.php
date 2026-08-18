@@ -32,7 +32,7 @@ abstract class AI_News_Assistant_Provider_Base implements AI_News_Assistant_Prov
 			'focus_keyword' => '', 'tags' => array(), 'category_suggestion' => 'Berita',
 		) );
 		$data['seo']['tags'] = $this->normalize_list( $data['seo']['tags'] );
-		$data = $this->optimize_rank_math_seo( $data );
+		$data = $this->optimize_rank_math_seo( $data, $input );
 		$data['social_captions'] = wp_parse_args( (array) $data['social_captions'], array(
 			'instagram_facebook' => '', 'twitter_x' => '', 'whatsapp_telegram' => '',
 		) );
@@ -52,7 +52,7 @@ abstract class AI_News_Assistant_Provider_Base implements AI_News_Assistant_Prov
 		}
 		return array_values( $list );
 	}
-	private function optimize_rank_math_seo( array $data ) {
+	private function optimize_rank_math_seo( array $data, array $input ) {
 		$title = sanitize_text_field( $data['main_title'] );
 		$words = preg_split( '/\s+/u', trim( $title ) );
 		$keyword_words = array_slice( array_filter( $words ), 0, 4 );
