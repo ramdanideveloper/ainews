@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AiProvider;
+use App\Models\UsageLog;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -33,5 +34,20 @@ class SaasApiTest extends TestCase
         $token = $response->json('data.token');
         $this->withToken($token)->postJson('/api/sites/connect', ['site_name' => 'News Site', 'site_url' => 'https://news.example.test', 'install_id' => '018f5b2d-3b5a-7f41-8c2e-abcdefabcdef'])->assertOk()->assertJsonStructure(['data' => ['site_token']]);
         $this->assertEquals(5000, (float) User::whereEmail('editor@example.test')->first()->wallet->balance_amount);
+    }
+
+    public function test_successful_image_is_logged_and_debited_once(): void
+    {
+        $auth = $this->postJson('/api/auth/register', ['name' => 'Image Editor', 'email' => 'image@example.test', 'password' => 'password123', 'password_confirmation' => 'password123']);
+        $site = $this->withToken($auth->json('data.token'))->postJson('/api/sites/connect', ['site_name' => 'Image Site', 'site_url' => 'https://image.example.test', 'install_id' => '018f5b2d-3b5a-7f41-8c2e-fedcbafedcba']);
+
+        $this->withToken($site->json('data.site_token'))->withHeader('X-Site-URL', 'https://image.example.test')->postJson('/api/ai/generate-image', [
+            'title' => 'Thumbnail editorial',
+            'aspect_ratio' => '16:9',
+            'use_as_thumbnail' => true,
+        ])->assertOk()->assertJsonPath('data.charged_amount', 1500)->assertJsonPath('data.balance_after', 3500);
+
+        $this->assertDatabaseHas('usage_logs', ['request_type' => 'image_generate', 'image_count' => 1, 'status' => 'success']);
+        $this->assertSame(1, UsageLog::where('request_type', 'image_generate')->count());
     }
 }

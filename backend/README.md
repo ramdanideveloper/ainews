@@ -33,6 +33,15 @@ In **Admin → AI Providers**, add an active model. Gemini text base URL is `htt
 
 Priority/fallback and daily/monthly limits are enforced by the router. Optional Routing Rules select a preferred model. Failed providers fall through to the next model and never debit the wallet.
 
+### Article and image models
+
+Create separate provider records so routing and prices remain independent:
+
+- Article/text: Gemini `gemini-2.5-flash` when the API account has access. Newer accounts that reject 2.5 can use `gemini-3.5-flash-lite` or another active text fallback.
+- Image/Nano Banana: Gemini `gemini-2.5-flash-image`, base URL `https://generativelanguage.googleapis.com/v1beta`, `supports_image` enabled and `supports_text` disabled.
+
+Set provider input/output prices per one million tokens and image price per generation in **Admin → AI Providers**. Set the customer-facing minimum/rates in **Admin → App Settings** (`text_selling_rate_per_token`, `minimum_text_request_fee`, `image_standard_fee`, and `image_with_thumbnail_seo_fee`). A successful article and a successful image create separate usage logs and wallet debits. Failed provider requests do not debit the wallet.
+
 ## Billing
 
 - Text: `max(Rp100, total_tokens × Rp0.10, provider_cost × 3)`

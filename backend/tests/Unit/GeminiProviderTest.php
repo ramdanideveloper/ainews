@@ -32,4 +32,23 @@ class GeminiProviderTest extends TestCase
             && $request['max_completion_tokens'] === 6000
             && ! isset($request['temperature']));
     }
+
+    public function test_it_uses_native_nano_banana_endpoint_and_aspect_ratio(): void
+    {
+        Http::fake(fn () => Http::response([
+            'candidates' => [['content' => ['parts' => [['inlineData' => ['data' => 'aW1hZ2U=', 'mimeType' => 'image/png']]]]]],
+        ]));
+
+        $provider = new AiProvider([
+            'base_url' => 'https://generativelanguage.googleapis.com/v1beta/openai',
+            'model_id' => 'models/gemini-2.5-flash-image',
+            'api_key' => 'test-key',
+        ]);
+
+        $result = (new GeminiProvider)->image($provider, ['prompt' => 'Editorial image', 'aspect_ratio' => '16:9']);
+
+        $this->assertSame('aW1hZ2U=', $result['image_base64']);
+        Http::assertSent(fn ($request) => str_starts_with($request->url(), 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent')
+            && data_get($request->data(), 'generationConfig.responseFormat.image.aspectRatio') === '16:9');
+    }
 }

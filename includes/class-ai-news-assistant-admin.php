@@ -13,6 +13,7 @@ class AI_News_Assistant_Admin {
 	public function menu() {
 		add_menu_page( __( 'AI News Assistant', 'ai-news-assistant' ), __( 'AI News Assistant', 'ai-news-assistant' ), 'edit_posts', 'ai-news-assistant', array( $this, 'dashboard' ), 'dashicons-media-document', 26 );
 		add_submenu_page( 'ai-news-assistant', __( 'Newsroom', 'ai-news-assistant' ), __( 'Newsroom', 'ai-news-assistant' ), 'edit_posts', 'ai-news-assistant', array( $this, 'dashboard' ) );
+		add_submenu_page( 'ai-news-assistant', __( 'Article Generator', 'ai-news-assistant' ), __( 'Article Generator', 'ai-news-assistant' ), 'edit_posts', 'ai-news-assistant-article', array( $this, 'article_page' ) );
 		add_submenu_page( 'ai-news-assistant', __( 'Settings', 'ai-news-assistant' ), __( 'Settings', 'ai-news-assistant' ), 'manage_options', 'ai-news-assistant-settings', array( $this, 'settings_page' ) );
 		add_submenu_page( 'ai-news-assistant', __( 'Akun AI', 'ai-news-assistant' ), __( 'Akun AI', 'ai-news-assistant' ), 'manage_options', 'ai-news-assistant-account', array( $this, 'connection_page' ) );
 	}
@@ -22,7 +23,31 @@ class AI_News_Assistant_Admin {
 		$js_version  = file_exists( AINA_DIR . 'assets/js/admin.js' ) ? (string) filemtime( AINA_DIR . 'assets/js/admin.js' ) : AINA_VERSION;
 		wp_enqueue_style( 'aina-admin', AINA_URL . 'assets/css/admin.css', array(), $css_version );
 		wp_enqueue_script( 'aina-admin', AINA_URL . 'assets/js/admin.js', array(), $js_version, true );
+		if ( false !== strpos( $hook, 'ai-news-assistant-article' ) ) { $article_js = AINA_DIR . 'assets/js/article-generator.js'; wp_enqueue_script( 'aina-article-generator', AINA_URL . 'assets/js/article-generator.js', array(), file_exists( $article_js ) ? (string) filemtime( $article_js ) : AINA_VERSION, true ); }
 		wp_localize_script( 'aina-admin', 'ainaAdmin', array( 'ajaxUrl' => admin_url( 'admin-ajax.php' ), 'nonce' => wp_create_nonce( 'aina_admin' ), 'generating' => __( 'Menyusun draft…', 'ai-news-assistant' ), 'saving' => __( 'Menyimpan…', 'ai-news-assistant' ), 'error' => __( 'Terjadi kesalahan. Silakan coba lagi.', 'ai-news-assistant' ), 'copy' => __( 'Salin Caption', 'ai-news-assistant' ), 'copied' => __( 'Tersalin!', 'ai-news-assistant' ) ) );
+	}
+	public function article_page() {
+		if ( ! current_user_can( 'edit_posts' ) ) wp_die( esc_html__( 'Anda tidak memiliki izin.', 'ai-news-assistant' ) );
+		$settings = AI_News_Assistant::settings(); $connected = ! empty( $settings['site_token'] ); $balance = $connected ? $this->backend_balance( $settings ) : null;
+		?>
+		<div class="wrap aina-wrap aina-article-generator-page">
+			<header class="aina-header"><div><span class="aina-eyebrow"><?php esc_html_e( 'AI CONTENT STUDIO', 'ai-news-assistant' ); ?></span><h1><?php esc_html_e( 'AI Article Generator', 'ai-news-assistant' ); ?></h1><p><?php esc_html_e( 'Buat artikel SEO lengkap dan thumbnail editorial dalam satu workflow.', 'ai-news-assistant' ); ?></p></div><?php if ( null !== $balance ) : ?><span class="aina-connection-pill is-connected"><?php echo esc_html( $this->format_credit( $balance ) ); ?></span><?php endif; ?></header>
+			<?php if ( ! $connected ) : ?><div class="aina-warning"><p><?php esc_html_e( 'Hubungkan Akun AI terlebih dahulu untuk menggunakan Article Generator.', 'ai-news-assistant' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=ai-news-assistant-account' ) ); ?>"><?php esc_html_e( 'Hubungkan akun', 'ai-news-assistant' ); ?></a></p></div><?php endif; ?>
+			<div class="aina-article-studio">
+				<section class="aina-panel aina-article-form-panel"><div class="aina-section-head"><div><span class="aina-step">01</span><h2><?php esc_html_e( 'Brief Artikel', 'ai-news-assistant' ); ?></h2></div><p><?php esc_html_e( 'Berikan fakta dan arahan yang cukup. AI tidak akan mengarang data di luar brief.', 'ai-news-assistant' ); ?></p></div>
+					<form id="aina-article-form">
+						<label><?php esc_html_e( 'Judul / topik artikel', 'ai-news-assistant' ); ?><span>*</span><input type="text" name="title" required placeholder="Contoh: Strategi UMKM Sukabumi Memasarkan Produk Secara Digital"></label>
+						<label><?php esc_html_e( 'Bahan, fakta, dan sumber', 'ai-news-assistant' ); ?><span>*</span><textarea name="brief" rows="7" required placeholder="Masukkan fakta utama, data, kutipan, sumber, dan informasi yang boleh digunakan..."></textarea></label>
+						<label><?php esc_html_e( 'Outline / arahan struktur', 'ai-news-assistant' ); ?><small><?php esc_html_e( ' Opsional', 'ai-news-assistant' ); ?></small><textarea name="outline" rows="4" placeholder="Pembuka, konteks, data utama, kutipan, dampak, penutup"></textarea></label>
+						<div class="aina-field-row"><label><?php esc_html_e( 'Focus keyword', 'ai-news-assistant' ); ?><input type="text" name="focus_keyword" placeholder="strategi UMKM Sukabumi"></label><label><?php esc_html_e( 'Target pembaca', 'ai-news-assistant' ); ?><input type="text" name="audience" placeholder="Pelaku UMKM dan masyarakat umum"></label></div>
+						<div class="aina-field-row"><label><?php esc_html_e( 'Gaya artikel', 'ai-news-assistant' ); ?><select name="style"><option value="seo_news">SEO News</option><option value="hard_news">Hard News</option><option value="feature">Feature</option><option value="explainer">Explainer</option></select></label><label><?php esc_html_e( 'Panjang', 'ai-news-assistant' ); ?><select name="length"><option value="short">Singkat</option><option value="medium" selected>Sedang</option><option value="long">Panjang</option></select></label></div>
+						<div class="aina-thumbnail-options"><label class="aina-toggle-row"><input type="checkbox" name="generate_thumbnail" value="1"><span><strong><?php esc_html_e( 'Generate thumbnail AI', 'ai-news-assistant' ); ?></strong><small><?php esc_html_e( 'Opsional, biaya gambar dihitung terpisah setelah berhasil.', 'ai-news-assistant' ); ?></small></span></label><div class="aina-image-options" hidden><label><?php esc_html_e( 'Prompt gambar tambahan', 'ai-news-assistant' ); ?><textarea name="image_prompt" rows="3" placeholder="Foto jurnalistik realistis, suasana lokal, tanpa teks dan logo"></textarea></label><div class="aina-field-row"><label><?php esc_html_e( 'Gaya gambar', 'ai-news-assistant' ); ?><select name="image_style"><option value="editorial photojournalism">Editorial Photojournalism</option><option value="realistic documentary photography">Realistic Documentary</option><option value="clean editorial illustration">Editorial Illustration</option></select></label><label><?php esc_html_e( 'Rasio', 'ai-news-assistant' ); ?><select name="aspect_ratio"><option value="16:9">16:9 Thumbnail</option><option value="1:1">1:1 Square</option><option value="9:16">9:16 Portrait</option></select></label></div></div></div>
+						<button type="submit" class="button button-primary aina-primary aina-generate-article" <?php disabled( ! $connected ); ?>><?php esc_html_e( 'Generate Artikel', 'ai-news-assistant' ); ?></button><div id="aina-article-message" class="aina-message"></div>
+					</form>
+				</section>
+				<section class="aina-panel aina-article-preview" id="aina-article-preview"><div class="aina-empty"><span class="dashicons dashicons-media-document"></span><h2><?php esc_html_e( 'Artikel akan tampil di sini', 'ai-news-assistant' ); ?></h2><p><?php esc_html_e( 'Isi brief lalu generate untuk melihat preview artikel, SEO, usage, dan thumbnail.', 'ai-news-assistant' ); ?></p></div></section>
+			</div>
+		</div><?php
 	}
 	public function register_settings() { register_setting( 'aina_settings_group', 'aina_settings', array( 'sanitize_callback' => array( $this, 'sanitize_settings' ), 'default' => AI_News_Assistant::defaults() ) ); }
 	public function sanitize_settings( $input ) {

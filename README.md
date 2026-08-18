@@ -6,8 +6,8 @@ Plugin WordPress dengan Smart News Form untuk mendeteksi jenis berita, memandu w
 
 1. Salin folder ini sebagai `wp-content/plugins/ai-news-assistant`.
 2. Aktifkan **AI News Assistant** dari menu Plugins WordPress.
-3. Buka **AI News Assistant → Settings**.
-4. Isi Backend URL pada **Account & Backend**. Guest dapat mencoba 10 kali; register mendapat welcome credit Rp5.000 dan Connected Site token dibuat otomatis.
+3. Buka **AI News Assistant → Akun AI**.
+4. Login atau register. Guest dapat mencoba 10 kali dan akun baru mendapat welcome credit Rp5.000.
 
 Persyaratan: WordPress modern, PHP 7.4 atau lebih baru.
 
@@ -22,6 +22,10 @@ Persyaratan: WordPress modern, PHP 7.4 atau lebih baru.
 7. Klik **Save as Draft**. Plugin hanya membuat `draft` atau `pending`, tidak pernah publish otomatis.
 8. Buka tautan **Edit Post** dan periksa meta box **AI News Assistant Review**.
 
+## Article & Image Generator
+
+Gunakan **AI News Assistant → Article Generator** untuk membuat artikel SEO lengkap dari brief faktual. Opsi thumbnail menggunakan provider gambar yang dirutekan untuk `image_generate`, menyimpan gambar ke Media Library, dan memasangnya sebagai featured image ketika draft disimpan. Usage token artikel serta usage/biaya gambar ditampilkan terpisah. Setiap regenerate yang berhasil merupakan request provider baru dan ditagihkan terpisah.
+
 ## Data yang disimpan
 
 Pengaturan disimpan pada option `aina_settings`. Hasil editorial disimpan dalam post meta `_aina_review_status`, `_aina_fact_checklist`, `_aina_seo`, `_aina_social_captions`, dan `_aina_generation_notes`.
@@ -34,4 +38,4 @@ Jika Rank Math aktif, buka **AI News Assistant → Settings** dan aktifkan **Syn
 
 ## Backend SaaS
 
-Backend Laravel berada di folder `backend/` dan harus di-deploy terpisah pada subdomain API dengan document root ke `backend/public`. Jalankan migration/seeder sesuai `backend/README.md`, tambahkan provider Gemini/OpenAI di Filament, lalu isi URL tersebut pada **AI News Assistant → Account & Backend**. Plugin versi 2 tidak lagi menyimpan API key provider.
+Backend Laravel berada di folder `backend/` dan harus di-deploy terpisah pada subdomain API dengan document root ke `backend/public`. Jalankan migration/seeder sesuai `backend/README.md`, lalu tambahkan provider teks dan gambar di Filament. Plugin tidak menyimpan API key provider di WordPress.

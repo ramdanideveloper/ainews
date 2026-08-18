@@ -14,7 +14,7 @@ class UsageLogsTable
     {
         return $table
             ->columns([
-                TextColumn::make('created_at')->dateTime()->sortable(), TextColumn::make('request_type')->badge(), TextColumn::make('user.email')->searchable(), TextColumn::make('site_url')->limit(30), TextColumn::make('provider'), TextColumn::make('model'), TextColumn::make('total_tokens')->numeric()->sortable(), TextColumn::make('charged_amount')->money('IDR')->sortable(), TextColumn::make('status')->badge(), TextColumn::make('error_message')->limit(40)->toggleable(),
+                TextColumn::make('created_at')->dateTime()->sortable(), TextColumn::make('request_type')->badge(), TextColumn::make('user.email')->searchable(), TextColumn::make('site_url')->limit(30), TextColumn::make('provider'), TextColumn::make('model'), TextColumn::make('total_tokens')->numeric()->sortable(), TextColumn::make('image_count')->label('Images')->numeric()->sortable(), TextColumn::make('charged_amount')->money('IDR')->sortable(), TextColumn::make('status')->badge(), TextColumn::make('error_message')->limit(40)->toggleable(),
             ])
             ->filters([
                 //
