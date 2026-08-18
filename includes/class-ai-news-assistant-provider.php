@@ -27,6 +27,7 @@ abstract class AI_News_Assistant_Provider_Base implements AI_News_Assistant_Prov
 			'source_available' => ! empty( $input['source'] ),
 			'needs_verification' => empty( $input['source'] ),
 		) );
+		$data['fact_checklist'] = $this->complete_fact_checklist( $data['fact_checklist'], $input, $data );
 		$data['seo'] = wp_parse_args( (array) $data['seo'], array(
 			'seo_title' => $data['main_title'], 'meta_description' => '', 'slug' => sanitize_title( $data['main_title'] ),
 			'focus_keyword' => '', 'tags' => array(), 'category_suggestion' => 'Berita',
@@ -37,6 +38,30 @@ abstract class AI_News_Assistant_Provider_Base implements AI_News_Assistant_Prov
 			'instagram_facebook' => '', 'twitter_x' => '', 'whatsapp_telegram' => '',
 		) );
 		return $data;
+	}
+	private function complete_fact_checklist( array $facts, array $input, array $data ) {
+		$editorial = isset( $input['editorial_data'] ) ? (array) $input['editorial_data'] : array();
+		$map = array(
+			'who' => array( 'involved_parties', 'party_condition', 'official', 'profile_name', 'business_actor', 'participants', 'spokesperson', 'speaker' ),
+			'when' => array( 'event_time', 'schedule', 'timeline' ),
+			'where' => array( 'location' ),
+			'why' => array( 'temporary_cause', 'background', 'market_context', 'key_message' ),
+			'how' => array( 'chronology', 'handling_status', 'main_story', 'agenda' ),
+		);
+		if ( empty( $facts['what'] ) ) $facts['what'] = sanitize_text_field( isset( $input['title'] ) ? $input['title'] : $data['main_title'] );
+		foreach ( $map as $fact => $keys ) {
+			if ( ! empty( $facts[ $fact ] ) ) continue;
+			foreach ( $keys as $key ) {
+				if ( ! empty( $editorial[ $key ] ) ) { $facts[ $fact ] = sanitize_textarea_field( $editorial[ $key ] ); break; }
+			}
+		}
+		$source_keys = array( 'source_information', 'official_source', 'authority_statement', 'resident_statement' );
+		$has_source = ! empty( $input['source'] );
+		foreach ( $source_keys as $key ) if ( ! empty( $editorial[ $key ] ) ) $has_source = true;
+		$facts['source_available'] = $has_source;
+		$required_missing = array_filter( array( 'who', 'what', 'when', 'where', 'why', 'how' ), function ( $key ) use ( $facts ) { return empty( $facts[ $key ] ); } );
+		$facts['needs_verification'] = ! empty( $required_missing ) || ! empty( $editorial['unconfirmed_data'] ) || 'Ready' !== ( isset( $data['review_status'] ) ? $data['review_status'] : '' );
+		return $facts;
 	}
 	private function normalize_list( $value ) {
 		if ( is_string( $value ) ) {
