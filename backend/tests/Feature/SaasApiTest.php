@@ -63,11 +63,15 @@ class SaasApiTest extends TestCase
 
         $this->withToken($site->json('data.site_token'))->withHeader('X-Site-URL', 'https://words.example.test')->postJson('/api/ai/generate-article', [
             'title' => 'Artikel dengan target kata',
-            'payload' => ['length' => 900, 'brief' => 'Bahan singkat untuk pengujian.'],
+            'payload' => ['length' => 900, 'structure' => 'listicle', 'point_count' => 10, 'brief' => 'Bahan singkat untuk pengujian.'],
         ])->assertOk()
             ->assertJsonPath('data.usage.word_target', 900)
             ->assertJsonPath('data.usage.expansion_performed', true)
             ->assertJsonPath('data.usage.target_met', false)
-            ->assertJsonPath('data.usage.actual_words', 2);
+            ->assertJsonPath('data.usage.actual_words', 2)
+            ->assertJsonPath('data.usage.point_target', 10)
+            ->assertJsonPath('data.usage.actual_points', 0)
+            ->assertJsonPath('data.usage.structure_met', false)
+            ->assertJsonPath('data.usage.structure_correction_performed', true);
     }
 }
