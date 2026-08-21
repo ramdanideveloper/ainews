@@ -25,7 +25,7 @@ class HuggingFaceProviderTest extends TestCase
 
         $this->assertSame(base64_encode('image-bytes'), $result['image_base64']);
         $this->assertSame('image/jpeg', $result['mime_type']);
-        Http::assertSent(fn ($request) => str_contains($request->url(), 'router.huggingface.co/fal-ai/fal-ai/flux/schnell') && $request->method() === 'POST' && $request->hasHeader('Authorization', 'Bearer hf_test') && $request['width'] === 1024 && $request['height'] === 576);
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'router.huggingface.co/fal-ai/fal-ai/flux/schnell') && $request->method() === 'POST' && $request->hasHeader('Authorization', 'Bearer hf_test') && $request['width'] === 1280 && $request['height'] === 672);
     }
 
     public function test_it_uses_a_dedicated_endpoint_when_configured(): void

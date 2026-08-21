@@ -115,6 +115,24 @@ class AI_News_Assistant_Post_Handler {
 		$upload = wp_upload_bits( $filename, null, $bytes );
 		if ( ! empty( $upload['error'] ) ) return new WP_Error( 'aina_image_upload', $upload['error'] );
 		require_once ABSPATH . 'wp-admin/includes/image.php';
+		if ( '16:9' === ( $payload['aspect_ratio'] ?? '' ) ) {
+			$editor = wp_get_image_editor( $upload['file'] );
+			if ( is_wp_error( $editor ) ) {
+				wp_delete_file( $upload['file'] );
+				return new WP_Error( 'aina_image_editor', __( 'Thumbnail tidak dapat diproses ke ukuran 1200 x 630 piksel.', 'ai-news-assistant' ) );
+			}
+			$resized = $editor->resize( 1200, 630, true );
+			if ( is_wp_error( $resized ) ) {
+				wp_delete_file( $upload['file'] );
+				return new WP_Error( 'aina_image_resize', $resized->get_error_message() );
+			}
+			$saved = $editor->save( $upload['file'] );
+			if ( is_wp_error( $saved ) || 1200 !== (int) ( $saved['width'] ?? 0 ) || 630 !== (int) ( $saved['height'] ?? 0 ) ) {
+				wp_delete_file( $upload['file'] );
+				return new WP_Error( 'aina_image_dimensions', __( 'Provider menghasilkan gambar yang terlalu kecil untuk thumbnail SEO 1200 x 630 piksel.', 'ai-news-assistant' ) );
+			}
+			if ( ! empty( $saved['mime-type'] ) ) $mime = sanitize_mime_type( $saved['mime-type'] );
+		}
 		$attachment_id = wp_insert_attachment( array( 'post_mime_type' => $mime, 'post_title' => sanitize_text_field( $payload['title'] ), 'post_excerpt' => sanitize_text_field( $result['caption'] ?? $payload['title'] ), 'post_status' => 'inherit' ), $upload['file'] );
 		if ( is_wp_error( $attachment_id ) ) return $attachment_id;
 		wp_update_attachment_metadata( $attachment_id, wp_generate_attachment_metadata( $attachment_id, $upload['file'] ) );

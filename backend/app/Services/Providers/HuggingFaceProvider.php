@@ -117,7 +117,9 @@ class HuggingFaceProvider implements AiProviderInterface
     private function dimensions(string $ratio): array
     {
         return match ($ratio) {
-            '16:9' => [1024, 576], '9:16' => [576, 1024], default => [1024, 1024]
+            // Generate above the final WordPress thumbnail size so it can be
+            // resized cleanly to Rank Math's recommended 1200 x 630 pixels.
+            '16:9' => [1280, 672], '9:16' => [576, 1024], default => [1024, 1024]
         };
     }
 
