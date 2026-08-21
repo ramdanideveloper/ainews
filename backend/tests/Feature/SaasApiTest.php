@@ -60,5 +60,14 @@ class SaasApiTest extends TestCase
             'title' => 'Artikel dengan target kata',
             'payload' => ['length' => 100],
         ])->assertUnprocessable()->assertJsonValidationErrors('payload.length');
+
+        $this->withToken($site->json('data.site_token'))->withHeader('X-Site-URL', 'https://words.example.test')->postJson('/api/ai/generate-article', [
+            'title' => 'Artikel dengan target kata',
+            'payload' => ['length' => 900, 'brief' => 'Bahan singkat untuk pengujian.'],
+        ])->assertOk()
+            ->assertJsonPath('data.usage.word_target', 900)
+            ->assertJsonPath('data.usage.expansion_performed', true)
+            ->assertJsonPath('data.usage.target_met', false)
+            ->assertJsonPath('data.usage.actual_words', 2);
     }
 }

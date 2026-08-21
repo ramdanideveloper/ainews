@@ -23,10 +23,35 @@ class AiGatewayService
             ]);
             $in = $result['input_tokens'] ?: $this->billing->estimateTokens(json_encode($messages));
             $out = $result['output_tokens'] ?: $this->billing->estimateTokens($result['content']);
-            $bill = $this->billing->textCharge($in, $out, $result['provider_model']);
             $data = $this->decode($result['content']);
+            $wordTarget = $type === 'generate_article' ? $this->articleWordTarget($payload) : null;
+            $actualWords = $wordTarget ? $this->articleWordCount($data) : null;
+            $expanded = false;
+            if ($wordTarget && $actualWords < (int) ceil($wordTarget * 0.9)) {
+                try {
+                    $expansionMessages = $this->articleExpansionMessages($payload, $data, $wordTarget, $actualWords);
+                    $expandedResult = $this->router->text($type, $expansionMessages, ['reasoning_effort' => 'low', 'max_completion_tokens' => 6000]);
+                    $in += $expandedResult['input_tokens'] ?: $this->billing->estimateTokens(json_encode($expansionMessages));
+                    $out += $expandedResult['output_tokens'] ?: $this->billing->estimateTokens($expandedResult['content']);
+                    $expandedData = $this->decode($expandedResult['content']);
+                    $expandedWords = $this->articleWordCount($expandedData);
+                    if ($expandedWords > $actualWords) {
+                        $data = $expandedData;
+                        $actualWords = $expandedWords;
+                    }
+                    $expanded = true;
+                } catch (Throwable $expansionError) {
+                    report($expansionError);
+                }
+            }
+            if ($wordTarget && $actualWords < (int) ceil($wordTarget * 0.9)) {
+                $notes = (array) ($data['verification_notes'] ?? []);
+                $notes[] = "Artikel mencapai {$actualWords} dari target {$wordTarget} kata karena bahan yang tersedia belum cukup untuk diperluas tanpa mengarang fakta. Tambahkan fakta, contoh, kutipan, atau konteks pendukung.";
+                $data['verification_notes'] = array_values(array_unique($notes));
+            }
+            $bill = $this->billing->textCharge($in, $out, $result['provider_model']);
 
-            return DB::transaction(function () use ($type, $actor, $guest, $result, $in, $out, $bill, $data) {
+            return DB::transaction(function () use ($type, $actor, $guest, $result, $in, $out, $bill, $data, $wordTarget, $actualWords, $expanded) {
                 $tx = null;
                 $remaining = null;
                 if ($guest) {
@@ -42,6 +67,12 @@ class AiGatewayService
                 $balance = $guest ? null : (float) $actor->user->wallet()->value('balance_amount');
 
                 $usage = ['input_tokens' => $in, 'output_tokens' => $out, 'total_tokens' => $in + $out, 'charged_amount' => $guest ? 0 : $bill['charged_amount'], 'balance_after' => $balance, 'free_trial_remaining' => $remaining];
+                if ($wordTarget) {
+                    $usage['word_target'] = $wordTarget;
+                    $usage['actual_words'] = $actualWords;
+                    $usage['target_met'] = $actualWords >= (int) ceil($wordTarget * 0.9);
+                    $usage['expansion_performed'] = $expanded;
+                }
 
                 return $type === 'detect_news_type' ? $this->formatDetection($data, $usage) : $this->formatText($data, $usage);
             });
@@ -93,6 +124,32 @@ class AiGatewayService
     private function formatDetection(array $data, array $usage): array
     {
         return ['news_type' => $data['news_type'] ?? 'explainer', 'news_type_label' => $data['news_type_label'] ?? 'Explainer', 'subtype' => $data['subtype'] ?? 'Informasi / Analisis', 'confidence' => (int) ($data['confidence'] ?? 50), 'required_data' => (array) ($data['required_data'] ?? []), 'warnings' => (array) ($data['warnings'] ?? []), 'review_status' => $data['review_status'] ?? 'Needs Verification', 'usage' => $usage];
+    }
+
+    private function articleWordTarget(array $payload): ?int
+    {
+        $target = (int) (data_get($payload, 'payload.length') ?? data_get($payload, 'payload.payload.length') ?? 0);
+
+        return $target >= 200 && $target <= 900 ? $target : null;
+    }
+
+    private function articleWordCount(array $data): int
+    {
+        $text = trim(($data['lead'] ?? '').' '.strip_tags((string) ($data['content_html'] ?? $data['content'] ?? '')));
+        if ($text === '') {
+            return 0;
+        }
+        preg_match_all('/[\p{L}\p{N}]+(?:[-’\'][\p{L}\p{N}]+)*/u', html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8'), $matches);
+
+        return count($matches[0]);
+    }
+
+    private function articleExpansionMessages(array $payload, array $draft, int $target, int $actual): array
+    {
+        $system = 'Anda adalah redaktur senior Indonesia. Perluas artikel JSON yang diberikan hingga mendekati target kata dengan toleransi 10 persen. Hitung hanya lead dan content_html. Gunakan hanya fakta dalam source_input dan current_draft. Jangan mengarang nama, angka, kutipan, sumber, pengalaman, manfaat, atau klaim baru. Tambahkan penjelasan konteks, transisi, langkah, dan elaborasi yang benar-benar didukung bahan. Pertahankan struktur JSON dan seluruh field SEO/checklist. Keluarkan JSON valid tanpa markdown.';
+        $input = ['target_words' => $target, 'current_words' => $actual, 'source_input' => $payload, 'current_draft' => $draft];
+
+        return [['role' => 'system', 'content' => $system], ['role' => 'user', 'content' => json_encode($input, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]];
     }
 
     private function systemPrompt(string $type): string
