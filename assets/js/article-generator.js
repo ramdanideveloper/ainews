@@ -9,7 +9,7 @@
   const thumbnailToggle = form.elements.generate_thumbnail;
   const imageOptions = form.querySelector('.aina-image-options');
   const structureSelect = form.elements.structure;
-  const pointCountField = form.querySelector('.aina-point-count');
+  const pointCountFields = form.querySelectorAll('.aina-point-count');
   let draft = null;
   let thumbnail = null;
 
@@ -49,8 +49,11 @@
     const usage = draft.usage || {};
     const image = thumbnail ? '<figure class="aina-generated-figure"><img src="' + esc(thumbnail.image_url) + '" alt="' + esc(draft.main_title) + '"><figcaption>Thumbnail AI · ' + money(thumbnail.charged_amount) + '</figcaption></figure>' : '';
     const warning = imageError ? '<div class="aina-warning"><strong>Artikel berhasil, thumbnail gagal.</strong><p>' + esc(imageError) + '</p></div>' : '';
-    const structureUsage = usage.point_target ? '<span>Jumlah poin <b>' + esc(usage.actual_points || 0) + ' / ' + esc(usage.point_target) + '</b></span><span>Status struktur <b>' + (usage.structure_met ? 'Sesuai' : 'Perlu diperbaiki') + '</b></span>' : '';
-    preview.innerHTML = '<div class="aina-result-head"><div><span class="aina-step">02</span><h2>Preview Artikel</h2></div><span class="aina-badge">' + esc(draft.review_status) + '</span></div>' + warning + image + '<article class="aina-article"><h2>' + esc(draft.main_title) + '</h2><div class="aina-content">' + draft.content + '</div></article><div class="aina-article-meta-grid"><div><span>Focus keyword</span><strong>' + esc(seo.focus_keyword) + '</strong></div><div><span>SEO title</span><strong>' + esc(seo.seo_title) + '</strong></div><div><span>Meta description</span><p>' + esc(seo.meta_description) + '</p></div><div><span>Slug</span><strong>' + esc(seo.slug) + '</strong></div></div><div class="aina-usage-bar"><span>Jumlah kata <b>' + esc(usage.actual_words || 0) + ' / ' + esc(usage.word_target || form.elements.length.value) + '</b></span><span>Status target <b>' + (usage.target_met ? 'Tercapai' : 'Perlu bahan tambahan') + '</b></span>' + structureUsage + '<span>Input <b>' + esc(usage.input_tokens || 0) + '</b> token</span><span>Output <b>' + esc(usage.output_tokens || 0) + '</b> token</span><span>Biaya artikel <b>' + money(usage.charged_amount) + '</b></span><span>Saldo <b>' + money(usage.balance_after) + '</b></span></div><div class="aina-actions"><button type="button" class="button button-primary aina-primary" data-article-action="save">Simpan sebagai Draft</button><button type="button" class="button" data-article-action="regenerate">Regenerate Artikel</button><button type="button" class="button" data-article-action="image">' + (thumbnail ? 'Regenerate Thumbnail' : 'Generate Thumbnail') + '</button></div><div class="aina-message aina-preview-message"></div>';
+    const structureUsage = usage.point_target ? '<span>Jumlah poin <b>' + esc(usage.actual_points || 0) + ' / ' + esc(usage.point_target) + '</b></span><span>Kata per poin <b>± ' + esc(usage.point_word_target || form.elements.point_word_count.value) + '</b></span><span>Status struktur <b>' + (usage.structure_met ? 'Sesuai' : 'Perlu diperbaiki') + '</b></span>' : '';
+    const audit = draft.seo_audit || {};
+    const auditChecks = audit.checks && typeof audit.checks === 'object' ? Object.entries(audit.checks).map(([key, passed]) => '<li class="' + (passed ? 'is-pass' : 'is-fail') + '">' + (passed ? '✓ ' : '× ') + esc(key.replaceAll('_', ' ')) + '</li>').join('') : '';
+    const auditHtml = audit.score != null ? '<section class="aina-seo-audit"><div><span>AI SEO Audit</span><strong>' + esc(audit.score) + '/100</strong><em>' + (audit.passed ? 'Target tercapai' : 'Perlu optimasi') + '</em></div><ul>' + auditChecks + '</ul><small>' + esc(audit.note || 'Estimasi internal; skor final dihitung Rank Math.') + '</small></section>' : '';
+    preview.innerHTML = '<div class="aina-result-head"><div><span class="aina-step">02</span><h2>Preview Artikel</h2></div><span class="aina-badge">' + esc(draft.review_status) + '</span></div>' + warning + image + auditHtml + '<article class="aina-article"><h2>' + esc(draft.main_title) + '</h2><div class="aina-content">' + draft.content + '</div></article><div class="aina-article-meta-grid"><div><span>Focus keyword</span><strong>' + esc(seo.focus_keyword) + '</strong></div><div><span>SEO title</span><strong>' + esc(seo.seo_title) + '</strong></div><div><span>Meta description</span><p>' + esc(seo.meta_description) + '</p></div><div><span>Slug</span><strong>' + esc(seo.slug) + '</strong></div></div><div class="aina-usage-bar"><span>Jumlah kata <b>' + esc(usage.actual_words || 0) + ' / ' + esc(usage.word_target || form.elements.length.value) + '</b></span><span>Status target <b>' + (usage.target_met ? 'Tercapai' : 'Perlu bahan tambahan') + '</b></span>' + structureUsage + '<span>SEO audit <b>' + esc(usage.seo_score || audit.score || 0) + '/100</b></span><span>Input <b>' + esc(usage.input_tokens || 0) + '</b> token</span><span>Output <b>' + esc(usage.output_tokens || 0) + '</b> token</span><span>Biaya artikel <b>' + money(usage.charged_amount) + '</b></span><span>Saldo <b>' + money(usage.balance_after) + '</b></span></div><div class="aina-actions"><button type="button" class="button button-primary aina-primary" data-article-action="save">Simpan sebagai Draft</button><button type="button" class="button" data-article-action="regenerate">Regenerate Artikel</button><button type="button" class="button" data-article-action="image">' + (thumbnail ? 'Regenerate Thumbnail' : 'Generate Thumbnail') + '</button></div><div class="aina-message aina-preview-message"></div>';
     message.className = 'aina-message'; message.innerHTML = '';
   }
 
@@ -96,8 +99,9 @@
   thumbnailToggle.addEventListener('change', () => { imageOptions.hidden = !thumbnailToggle.checked; });
   function syncStructureControl() {
     const controlled = structureSelect.value !== 'standard';
-    pointCountField.hidden = !controlled;
+    pointCountFields.forEach(field => { field.hidden = !controlled; });
     form.elements.point_count.disabled = !controlled;
+    form.elements.point_word_count.disabled = !controlled;
   }
   structureSelect.addEventListener('change', syncStructureControl);
   syncStructureControl();

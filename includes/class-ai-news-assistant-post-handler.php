@@ -61,6 +61,7 @@ class AI_News_Assistant_Post_Handler {
 			'length' => isset( $_POST['length'] ) ? min( 900, max( 200, absint( $_POST['length'] ) ) ) : 500,
 			'structure' => isset( $_POST['structure'] ) && in_array( $_POST['structure'], array( 'standard', 'listicle', 'tutorial', 'faq' ), true ) ? sanitize_key( $_POST['structure'] ) : 'standard',
 			'point_count' => isset( $_POST['point_count'] ) ? min( 20, max( 2, absint( $_POST['point_count'] ) ) ) : 10,
+			'point_word_count' => isset( $_POST['point_word_count'] ) ? min( 200, max( 50, absint( $_POST['point_word_count'] ) ) ) : 100,
 			'audience' => isset( $_POST['audience'] ) ? sanitize_text_field( wp_unslash( $_POST['audience'] ) ) : '',
 			'editorial_data' => array(),
 		);
@@ -103,7 +104,8 @@ class AI_News_Assistant_Post_Handler {
 		$this->save_meta( $post_id, $data );
 		$thumbnail_id = isset( $_POST['thumbnail_id'] ) ? absint( $_POST['thumbnail_id'] ) : 0;
 		if ( $thumbnail_id && wp_attachment_is_image( $thumbnail_id ) ) { set_post_thumbnail( $post_id, $thumbnail_id ); wp_update_post( array( 'ID' => $thumbnail_id, 'post_parent' => $post_id ) ); update_post_meta( $post_id, '_aina_generated_image_id', $thumbnail_id ); }
-		wp_send_json_success( array( 'message' => __( 'Draft berhasil disimpan.', 'ai-news-assistant' ), 'post_id' => $post_id, 'edit_url' => get_edit_post_link( $post_id, 'raw' ) ) );
+		$seo_score = isset( $data['seo_audit']['score'] ) ? absint( $data['seo_audit']['score'] ) : 0;
+		wp_send_json_success( array( 'message' => $seo_score ? sprintf( __( 'Draft berhasil disimpan. Estimasi audit SEO: %d/100.', 'ai-news-assistant' ), $seo_score ) : __( 'Draft berhasil disimpan.', 'ai-news-assistant' ), 'post_id' => $post_id, 'edit_url' => get_edit_post_link( $post_id, 'raw' ), 'seo_score' => $seo_score ) );
 	}
 	private function store_generated_image( array $result, array $payload ) {
 		if ( empty( $result['image_base64'] ) ) return new WP_Error( 'aina_image_empty', __( 'Provider tidak mengembalikan data gambar.', 'ai-news-assistant' ) );
@@ -157,6 +159,7 @@ class AI_News_Assistant_Post_Handler {
 		update_post_meta( $post_id, '_aina_review_status', sanitize_text_field( isset( $data['review_status'] ) ? $data['review_status'] : '' ) );
 		update_post_meta( $post_id, '_aina_fact_checklist', $this->clean_array( isset( $data['fact_checklist'] ) ? $data['fact_checklist'] : array() ) );
 		update_post_meta( $post_id, '_aina_seo', $this->clean_array( $seo ) );
+		update_post_meta( $post_id, '_aina_seo_audit', $this->clean_array( isset( $data['seo_audit'] ) ? $data['seo_audit'] : array() ) );
 		update_post_meta( $post_id, '_aina_social_captions', $this->clean_array( isset( $data['social_captions'] ) ? $data['social_captions'] : array() ) );
 		update_post_meta( $post_id, '_aina_usage', $this->clean_array( isset( $data['usage'] ) ? $data['usage'] : array() ) );
 		update_post_meta( $post_id, '_aina_generation_notes', $this->clean_array( array( 'alternative_titles' => isset( $data['alternative_titles'] ) ? $data['alternative_titles'] : array(), 'summary_points' => isset( $data['summary_points'] ) ? $data['summary_points'] : array(), 'verification_notes' => isset( $data['verification_notes'] ) ? $data['verification_notes'] : array(), 'generated_at' => current_time( 'mysql' ) ) ) );

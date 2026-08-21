@@ -26,6 +26,7 @@ class AiGatewayService
             $data = $this->decode($result['content']);
             $structure = $type === 'generate_article' ? $this->articleStructure($payload) : 'standard';
             $pointTarget = $structure !== 'standard' ? $this->articlePointTarget($payload) : null;
+            $pointWords = $pointTarget ? $this->articlePointWordTarget($payload) : null;
             $actualPoints = $pointTarget ? $this->articleStructureCount($data, $structure) : null;
             $structureCorrected = false;
             if ($pointTarget && $actualPoints !== $pointTarget) {
@@ -67,6 +68,32 @@ class AiGatewayService
                     report($expansionError);
                 }
             }
+            $seoCorrected = false;
+            $seoAudit = $type === 'generate_article' ? $this->articleSeoAudit($data, $payload, $wordTarget) : null;
+            if ($seoAudit && $seoAudit['score'] < 85) {
+                try {
+                    $seoMessages = $this->articleSeoCorrectionMessages($payload, $data, $seoAudit);
+                    $seoResult = $this->router->text($type, $seoMessages, ['reasoning_effort' => 'low', 'max_completion_tokens' => 6000]);
+                    $in += $seoResult['input_tokens'] ?: $this->billing->estimateTokens(json_encode($seoMessages));
+                    $out += $seoResult['output_tokens'] ?: $this->billing->estimateTokens($seoResult['content']);
+                    $seoData = $this->decode($seoResult['content']);
+                    $newAudit = $this->articleSeoAudit($seoData, $payload, $wordTarget);
+                    $newPoints = $pointTarget ? $this->articleStructureCount($seoData, $structure) : null;
+                    if ($newAudit['score'] > $seoAudit['score'] && (! $pointTarget || $newPoints === $pointTarget)) {
+                        $data = $seoData;
+                        $seoAudit = $newAudit;
+                        $actualWords = $wordTarget ? $this->articleWordCount($data) : null;
+                        $actualPoints = $newPoints;
+                    }
+                    $seoCorrected = true;
+                } catch (Throwable $seoError) {
+                    report($seoError);
+                }
+            }
+            if ($seoAudit) {
+                $seoAudit['ai_correction_performed'] = $seoCorrected;
+                $data['seo_audit'] = $seoAudit;
+            }
             if ($wordTarget && $actualWords < (int) ceil($wordTarget * 0.9)) {
                 $notes = (array) ($data['verification_notes'] ?? []);
                 $notes[] = "Artikel mencapai {$actualWords} dari target {$wordTarget} kata karena bahan yang tersedia belum cukup untuk diperluas tanpa mengarang fakta. Tambahkan fakta, contoh, kutipan, atau konteks pendukung.";
@@ -79,7 +106,7 @@ class AiGatewayService
             }
             $bill = $this->billing->textCharge($in, $out, $result['provider_model']);
 
-            return DB::transaction(function () use ($type, $actor, $guest, $result, $in, $out, $bill, $data, $wordTarget, $actualWords, $expanded, $structure, $pointTarget, $actualPoints, $structureCorrected) {
+            return DB::transaction(function () use ($type, $actor, $guest, $result, $in, $out, $bill, $data, $wordTarget, $actualWords, $expanded, $structure, $pointTarget, $pointWords, $actualPoints, $structureCorrected, $seoAudit, $seoCorrected) {
                 $tx = null;
                 $remaining = null;
                 if ($guest) {
@@ -104,9 +131,16 @@ class AiGatewayService
                 if ($pointTarget) {
                     $usage['structure'] = $structure;
                     $usage['point_target'] = $pointTarget;
+                    $usage['point_word_target'] = $pointWords;
                     $usage['actual_points'] = $actualPoints;
                     $usage['structure_met'] = $actualPoints === $pointTarget;
                     $usage['structure_correction_performed'] = $structureCorrected;
+                }
+                if ($seoAudit) {
+                    $usage['seo_score'] = $seoAudit['score'];
+                    $usage['seo_target'] = 85;
+                    $usage['seo_target_met'] = $seoAudit['score'] >= 85;
+                    $usage['seo_correction_performed'] = $seoCorrected;
                 }
 
                 return $type === 'detect_news_type' ? $this->formatDetection($data, $usage) : $this->formatText($data, $usage);
@@ -153,7 +187,7 @@ class AiGatewayService
 
     private function formatText(array $d, array $usage): array
     {
-        return ['title' => $d['title'] ?? $d['main_title'] ?? '', 'alternative_titles' => (array) ($d['alternative_titles'] ?? []), 'lead' => $d['lead'] ?? '', 'content_html' => $d['content_html'] ?? $d['content'] ?? '', 'summary_points' => (array) ($d['summary_points'] ?? []), 'verification_notes' => (array) ($d['verification_notes'] ?? []), 'fact_checklist' => $d['fact_checklist'] ?? [], 'seo_title' => $d['seo_title'] ?? ($d['seo']['seo_title'] ?? ''), 'meta_description' => $d['meta_description'] ?? ($d['seo']['meta_description'] ?? ''), 'focus_keyword' => $d['focus_keyword'] ?? ($d['seo']['focus_keyword'] ?? ''), 'slug' => $d['slug'] ?? ($d['seo']['slug'] ?? ''), 'tags' => (array) ($d['tags'] ?? ($d['seo']['tags'] ?? [])), 'category_suggestion' => $d['category_suggestion'] ?? ($d['seo']['category_suggestion'] ?? ''), 'social_captions' => $d['social_captions'] ?? [], 'review_status' => $d['review_status'] ?? 'Needs Verification', 'usage' => $usage];
+        return ['title' => $d['title'] ?? $d['main_title'] ?? '', 'alternative_titles' => (array) ($d['alternative_titles'] ?? []), 'lead' => $d['lead'] ?? '', 'content_html' => $d['content_html'] ?? $d['content'] ?? '', 'summary_points' => (array) ($d['summary_points'] ?? []), 'verification_notes' => (array) ($d['verification_notes'] ?? []), 'fact_checklist' => $d['fact_checklist'] ?? [], 'seo_title' => $d['seo_title'] ?? ($d['seo']['seo_title'] ?? ''), 'meta_description' => $d['meta_description'] ?? ($d['seo']['meta_description'] ?? ''), 'focus_keyword' => $d['focus_keyword'] ?? ($d['seo']['focus_keyword'] ?? ''), 'slug' => $d['slug'] ?? ($d['seo']['slug'] ?? ''), 'tags' => (array) ($d['tags'] ?? ($d['seo']['tags'] ?? [])), 'category_suggestion' => $d['category_suggestion'] ?? ($d['seo']['category_suggestion'] ?? ''), 'seo_audit' => $d['seo_audit'] ?? [], 'social_captions' => $d['social_captions'] ?? [], 'review_status' => $d['review_status'] ?? 'Needs Verification', 'usage' => $usage];
     }
 
     private function formatDetection(array $data, array $usage): array
@@ -182,6 +216,13 @@ class AiGatewayService
         return min(20, max(2, $target));
     }
 
+    private function articlePointWordTarget(array $payload): int
+    {
+        $target = (int) (data_get($payload, 'payload.point_word_count') ?? data_get($payload, 'payload.payload.point_word_count') ?? 100);
+
+        return min(200, max(50, $target));
+    }
+
     private function articleStructureCount(array $data, string $structure): int
     {
         $html = (string) ($data['content_html'] ?? $data['content'] ?? '');
@@ -206,11 +247,52 @@ class AiGatewayService
         return count($matches[0]);
     }
 
+    private function articleSeoAudit(array $data, array $payload, ?int $wordTarget): array
+    {
+        $keyword = trim((string) (data_get($payload, 'payload.focus_keyword') ?? data_get($payload, 'payload.payload.focus_keyword') ?? $data['focus_keyword'] ?? ''));
+        $title = trim((string) ($data['seo_title'] ?? ''));
+        $description = trim((string) ($data['meta_description'] ?? ''));
+        $slug = trim((string) ($data['slug'] ?? ''));
+        $lead = trim(strip_tags((string) ($data['lead'] ?? '')));
+        $content = (string) ($data['content_html'] ?? $data['content'] ?? '');
+        $plain = trim(strip_tags($content));
+        $words = max(1, $this->articleWordCount($data));
+        $occurrences = $keyword === '' ? 0 : substr_count(mb_strtolower($lead.' '.$plain), mb_strtolower($keyword));
+        $density = $occurrences * max(1, str_word_count($keyword)) / $words * 100;
+        $checks = [
+            'focus_keyword_available' => $keyword !== '',
+            'keyword_at_seo_title_start' => $keyword !== '' && str_starts_with(mb_strtolower($title), mb_strtolower($keyword)),
+            'seo_title_length' => mb_strlen($title) >= 30 && mb_strlen($title) <= 60,
+            'keyword_in_description' => $keyword !== '' && str_contains(mb_strtolower($description), mb_strtolower($keyword)),
+            'description_length' => mb_strlen($description) >= 120 && mb_strlen($description) <= 160,
+            'keyword_in_slug' => $keyword !== '' && str_contains($slug, str($keyword)->slug()->toString()),
+            'slug_length' => strlen($slug) <= 60,
+            'keyword_at_content_start' => $keyword !== '' && str_starts_with(mb_strtolower($lead), mb_strtolower($keyword)),
+            'keyword_in_heading' => $keyword !== '' && (bool) preg_match('/<h[2-4][^>]*>[^<]*'.preg_quote($keyword, '/').'/iu', $content),
+            'keyword_density' => $density >= 0.5 && $density <= 2.5,
+            'content_length' => ! $wordTarget || $words >= (int) ceil($wordTarget * 0.9),
+        ];
+        $score = (int) round(count(array_filter($checks)) / count($checks) * 100);
+
+        return ['score' => $score, 'target' => 85, 'passed' => $score >= 85, 'checks' => $checks, 'keyword_density' => round($density, 2), 'note' => 'Estimasi internal; skor final tetap dihitung oleh Rank Math di WordPress.'];
+    }
+
+    private function articleSeoCorrectionMessages(array $payload, array $draft, array $audit): array
+    {
+        $system = 'Anda adalah auditor SEO Rank Math. Perbaiki hanya bagian yang gagal pada seo_audit agar estimasi mencapai minimal 85. Focus keyword wajib muncul persis dan alami di awal lead, isi artikel, satu H2, awal SEO title, meta description, dan slug. SEO title 30-60 karakter, meta description 120-160 karakter, slug maksimal 60 karakter, density keyword 0,5-2,5 persen. Pertahankan seluruh fakta, jumlah section poin, format H2 bernomor, panjang per poin, dan field JSON lain. Jangan menambahkan klaim, statistik, kutipan, atau tautan palsu. Keluarkan JSON valid tanpa markdown.';
+        $input = ['source_input' => $payload, 'current_draft' => $draft, 'seo_audit' => $audit];
+
+        return [['role' => 'system', 'content' => $system], ['role' => 'user', 'content' => json_encode($input, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]];
+    }
+
     private function articleExpansionMessages(array $payload, array $draft, int $target, int $actual): array
     {
         $structure = $this->articleStructure($payload);
         $pointTarget = $structure !== 'standard' ? $this->articlePointTarget($payload) : null;
-        $structureRule = $pointTarget ? " Pertahankan tepat {$pointTarget} poin dengan format {$structure}; jangan menambah, menghapus, memecah, atau menggabungkan poin. Setiap poin wajib memiliki <h2> bernomor seperti <h2>1. Judul Poin</h2>, lalu penjelasan substantif sekitar 100 kata (90-110 kata) dalam satu atau beberapa tag <p>." : '';
+        $pointWords = $this->articlePointWordTarget($payload);
+        $minimumPointWords = (int) floor($pointWords * 0.9);
+        $maximumPointWords = (int) ceil($pointWords * 1.1);
+        $structureRule = $pointTarget ? " Pertahankan tepat {$pointTarget} poin dengan format {$structure}; jangan menambah, menghapus, memecah, atau menggabungkan poin. Setiap poin wajib memiliki <h2> bernomor seperti <h2>1. Judul Poin</h2>, lalu penjelasan substantif sekitar {$pointWords} kata ({$minimumPointWords}-{$maximumPointWords} kata) dalam satu atau beberapa tag <p>." : '';
         $system = 'Anda adalah redaktur senior Indonesia. Perluas artikel JSON yang diberikan hingga mendekati target kata dengan toleransi 10 persen. Hitung hanya lead dan content_html. Gunakan hanya fakta dalam source_input dan current_draft. Untuk artikel ide, Anda boleh mengembangkan gagasan kreatif yang relevan dengan brief, tetapi jangan mengarang statistik, hasil nyata, kutipan, sumber, atau klaim faktual. Tambahkan penjelasan konteks, transisi, langkah, dan elaborasi yang didukung bahan. Pertahankan struktur JSON dan seluruh field SEO/checklist.'.$structureRule.' Keluarkan JSON valid tanpa markdown.';
         $input = ['target_words' => $target, 'current_words' => $actual, 'source_input' => $payload, 'current_draft' => $draft];
 
@@ -219,10 +301,13 @@ class AiGatewayService
 
     private function articleStructureCorrectionMessages(array $payload, array $draft, string $structure, int $target, int $actual): array
     {
+        $pointWords = $this->articlePointWordTarget($payload);
+        $minimumPointWords = (int) floor($pointWords * 0.9);
+        $maximumPointWords = (int) ceil($pointWords * 1.1);
         $format = match ($structure) {
-            'faq' => 'Gunakan tepat '.$target.' elemen <section class="aina-faq-item"><h2>Nomor. Pertanyaan</h2><p>Jawaban sekitar 100 kata (90-110 kata).</p></section>. Nomori H2 secara berurutan mulai dari 1.',
-            'tutorial' => 'Gunakan tepat '.$target.' elemen <section class="aina-article-point"><h2>Nomor. Judul Langkah</h2><p>Penjelasan sekitar 100 kata (90-110 kata).</p></section>. Nomori H2 secara berurutan mulai dari 1 dan jangan gunakan daftar bertingkat.',
-            default => 'Gunakan tepat '.$target.' elemen <section class="aina-article-point"><h2>Nomor. Judul Ide</h2><p>Penjelasan sekitar 100 kata (90-110 kata).</p></section>. Nomori H2 secara berurutan mulai dari 1 dan jangan gunakan daftar bertingkat.',
+            'faq' => 'Gunakan tepat '.$target.' elemen <section class="aina-faq-item"><h2>Nomor. Pertanyaan</h2><p>Jawaban sekitar '.$pointWords.' kata ('.$minimumPointWords.'-'.$maximumPointWords.' kata).</p></section>. Nomori H2 secara berurutan mulai dari 1.',
+            'tutorial' => 'Gunakan tepat '.$target.' elemen <section class="aina-article-point"><h2>Nomor. Judul Langkah</h2><p>Penjelasan sekitar '.$pointWords.' kata ('.$minimumPointWords.'-'.$maximumPointWords.' kata).</p></section>. Nomori H2 secara berurutan mulai dari 1 dan jangan gunakan daftar bertingkat.',
+            default => 'Gunakan tepat '.$target.' elemen <section class="aina-article-point"><h2>Nomor. Judul Ide</h2><p>Penjelasan sekitar '.$pointWords.' kata ('.$minimumPointWords.'-'.$maximumPointWords.' kata).</p></section>. Nomori H2 secara berurutan mulai dari 1 dan jangan gunakan daftar bertingkat.',
         };
         $system = "Anda adalah editor struktur artikel. Artikel memiliki {$actual} poin, tetapi wajib tepat {$target}. Perbaiki jumlah dan penomoran. Untuk artikel ide, Anda boleh melengkapi gagasan kreatif yang relevan dengan brief, tetapi jangan mengarang statistik, hasil nyata, kutipan, sumber, atau klaim faktual. {$format} Pertahankan seluruh field JSON, SEO, checklist, lead, dan informasi yang valid. Keluarkan JSON valid tanpa markdown.";
         $input = ['source_input' => $payload, 'current_draft' => $draft, 'structure' => $structure, 'required_points' => $target];
@@ -236,7 +321,7 @@ class AiGatewayService
             return 'Anda adalah editor berita Indonesia. Klasifikasikan judul tanpa mengarang fakta. Keluarkan JSON valid tanpa markdown dengan fields: news_type (incident/government/business/feature/event/advertorial/explainer), news_type_label, subtype, confidence (0-100), required_data (array), warnings (array), review_status. Berikan warning privasi, anak, korban, praduga tak bersalah, atau verifikasi aparat jika relevan.';
         }
         if ($type === 'generate_article') {
-            return 'Anda adalah redaktur dan SEO content writer Indonesia. Tulis artikel hanya dari brief, fakta, sumber, outline, target pembaca, dan gaya pada input. Field length adalah target jumlah kata artikel antara 200 sampai 900 kata. Buat gabungan lead dan content_html sedekat mungkin dengan target tersebut dengan toleransi maksimal 10 persen; metadata SEO, alternatif judul, checklist, dan caption tidak dihitung. Patuhi field structure: standard memakai paragraf/heading biasa; listicle memakai tepat point_count elemen <section class="aina-article-point"><h2>Nomor. Judul Ide</h2><p>Penjelasan</p></section>; tutorial memakai format yang sama dengan judul langkah; faq memakai tepat point_count elemen <section class="aina-faq-item"><h2>Nomor. Pertanyaan</h2><p>Jawaban</p></section>. Nomori setiap H2 secara berurutan mulai dari 1. Untuk listicle, tutorial, dan FAQ, setiap poin atau jawaban wajib diberi penjelasan substantif sekitar 100 kata (90-110 kata) dalam satu atau beberapa paragraf, bukan hanya judul atau satu kalimat. Jika kebutuhan kata seluruh poin melebihi field length, kelengkapan point_count dan 90-110 kata per poin lebih diprioritaskan. Untuk artikel ide, Anda boleh merumuskan gagasan kreatif yang relevan dengan brief, tetapi jangan mengarang statistik, hasil nyata, kutipan, sumber, atau klaim faktual. Lead harus langsung menjawab topik. content_html berisi HTML valid; jangan mengulang judul, lead, nama domain, atau memakai heading generik seperti "fakta utama". Gunakan focus keyword secara alami di lead, satu heading, isi, SEO title, meta description, dan slug tanpa keyword stuffing. Keluarkan JSON valid tanpa markdown dengan fields: title, alternative_titles (array), lead, content_html, summary_points (array), verification_notes (array), fact_checklist (object: who, what, when, where, why, how, source_available, needs_verification), seo_title, meta_description, focus_keyword, slug, tags (array), category_suggestion, social_captions (object), review_status.';
+            return 'Anda adalah redaktur dan SEO content writer Indonesia. Tulis artikel hanya dari brief, fakta, sumber, outline, target pembaca, dan gaya pada input. Field length adalah target jumlah kata artikel antara 200 sampai 900 kata. Buat gabungan lead dan content_html sedekat mungkin dengan target tersebut dengan toleransi maksimal 10 persen; metadata SEO, alternatif judul, checklist, dan caption tidak dihitung. Patuhi field structure: standard memakai paragraf/heading biasa; listicle memakai tepat point_count elemen <section class="aina-article-point"><h2>Nomor. Judul Ide</h2><p>Penjelasan</p></section>; tutorial memakai format yang sama dengan judul langkah; faq memakai tepat point_count elemen <section class="aina-faq-item"><h2>Nomor. Pertanyaan</h2><p>Jawaban</p></section>. Nomori setiap H2 secara berurutan mulai dari 1. Untuk listicle, tutorial, dan FAQ, setiap poin atau jawaban wajib diberi penjelasan substantif sesuai point_word_count dengan toleransi 10 persen dalam satu atau beberapa paragraf, bukan hanya judul atau satu kalimat. Jika kebutuhan kata seluruh poin melebihi field length, kelengkapan point_count dan point_word_count lebih diprioritaskan. Untuk artikel ide, Anda boleh merumuskan gagasan kreatif yang relevan dengan brief, tetapi jangan mengarang statistik, hasil nyata, kutipan, sumber, atau klaim faktual. Lead harus diawali focus_keyword secara alami. Focus keyword wajib muncul persis di awal lead, dalam isi, dan sedikitnya satu H2. SEO title harus diawali focus_keyword dan maksimal 60 karakter; meta description 120-155 karakter serta memuat focus_keyword; slug ringkas maksimal 55 karakter dan memuat focus_keyword. Hindari keyword stuffing. content_html berisi HTML valid; jangan mengulang judul, lead, nama domain, atau memakai heading generik seperti "fakta utama". Keluarkan JSON valid tanpa markdown dengan fields: title, alternative_titles (array), lead, content_html, summary_points (array), verification_notes (array), fact_checklist (object: who, what, when, where, why, how, source_available, needs_verification), seo_title, meta_description, focus_keyword, slug, tags (array), category_suggestion, social_captions (object), review_status.';
         }
 
         return 'Anda adalah redaktur berita Indonesia. Request type: '.$type.'. Gunakan hanya fakta input dan tandai data kosong untuk verifikasi. Tulis lead ringkas yang langsung memuat fakta terpenting. content_html hanya berisi paragraf lanjutan dengan tag <p>, tanpa mengulang judul atau lead, tanpa heading generik seperti "fakta utama", tanpa nama domain, dan tanpa markdown. Kutipan langsung ditulis sebagai paragraf tersendiri menggunakan tanda kutip Indonesia. Keluarkan JSON valid dengan fields: title, alternative_titles (array), lead, content_html, summary_points (array), verification_notes (array), fact_checklist (object dengan key who, what, when, where, why, how, source_available, needs_verification), seo_title, meta_description, focus_keyword, slug, tags, category_suggestion, social_captions, review_status. Isi setiap unsur 5W+1H hanya dari fakta input; gunakan string kosong jika datanya tidak tersedia. Jangan mempublikasikan atau mengarang fakta.';

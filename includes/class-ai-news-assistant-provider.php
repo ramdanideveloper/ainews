@@ -81,7 +81,7 @@ abstract class AI_News_Assistant_Provider_Base implements AI_News_Assistant_Prov
 		$title = sanitize_text_field( $data['main_title'] );
 		$words = preg_split( '/\s+/u', trim( $title ) );
 		$keyword_words = array_slice( array_filter( $words ), 0, 4 );
-		$keyword = trim( implode( ' ', $keyword_words ), " \t\n\r\0\x0B,.:;!?-" );
+		$keyword = ! empty( $input['focus_keyword'] ) ? sanitize_text_field( $input['focus_keyword'] ) : trim( implode( ' ', $keyword_words ), " \t\n\r\0\x0B,.:;!?-" );
 		if ( function_exists( 'mb_strtolower' ) ) $keyword = mb_strtolower( $keyword, 'UTF-8' );
 		else $keyword = strtolower( $keyword );
 		$keyword = $this->limit_text( $keyword, 45, '' );
@@ -96,13 +96,16 @@ abstract class AI_News_Assistant_Provider_Base implements AI_News_Assistant_Prov
 		if ( false === stripos( $description, $keyword ) ) $description = ucfirst( $keyword ) . '. ' . $description;
 		$data['seo']['meta_description'] = $this->limit_text( $description, 155 );
 
-		$slug = sanitize_title( $keyword . ' ' . $data['seo']['slug'] );
-		$data['seo']['slug'] = trim( $this->limit_text( $slug, 60, '' ), '-' );
+		$slug = sanitize_title( $data['seo']['slug'] );
+		if ( false === strpos( $slug, sanitize_title( $keyword ) ) ) $slug = sanitize_title( $keyword . ' ' . $slug );
+		$data['seo']['slug'] = trim( $this->limit_text( $slug, 55, '' ), '-' );
 
-		$data['content'] = $this->format_editorial_content( $data['content'], $data['lead'], $input );
+		$data['content'] = $this->format_editorial_content( $data['content'], $data['lead'], $input, $keyword );
+		$backend_audit = isset( $data['seo_audit'] ) ? (array) $data['seo_audit'] : array();
+		$data['seo_audit'] = array_merge( $backend_audit, $this->seo_audit( $data, $keyword ) );
 		return $data;
 	}
-	private function format_editorial_content( $content, $lead, array $input ) {
+	private function format_editorial_content( $content, $lead, array $input, $keyword ) {
 		$content = (string) $content;
 		$content = preg_replace( '/<h[1-3][^>]*>\s*[^<]*(?:fakta utama|ringkasan utama|poin utama)[^<]*<\/h[1-3]>\s*/iu', '', $content );
 		$host = (string) wp_parse_url( home_url( '/' ), PHP_URL_HOST );
@@ -112,9 +115,29 @@ abstract class AI_News_Assistant_Provider_Base implements AI_News_Assistant_Prov
 		if ( '' !== $location ) $prefix .= ' | ' . esc_html( $location );
 		$prefix .= '</strong> – ';
 		$lead_text = trim( wp_strip_all_tags( (string) $lead ) );
+		if ( '' !== $keyword && false === stripos( $lead_text, $keyword ) ) $lead_text = ucfirst( $keyword ) . ' — ' . $lead_text;
+		if ( '' !== $keyword && ! preg_match( '/<h[2-4][^>]*>[^<]*' . preg_quote( $keyword, '/' ) . '/iu', $content ) ) {
+			if ( preg_match( '/<h2([^>]*)>/i', $content ) ) $content = preg_replace( '/<h2([^>]*)>/i', '<h2$1>' . esc_html( ucfirst( $keyword ) ) . ': ', $content, 1 );
+			else $content = '<h2>' . esc_html( ucfirst( $keyword ) ) . '</h2>' . $content;
+		}
 		$opening = '<p>' . $prefix . esc_html( $lead_text ) . '</p>';
 		if ( '' !== $host && false !== stripos( wp_strip_all_tags( $content ), $host ) ) return $content;
 		return $opening . $content;
+	}
+	private function seo_audit( array $data, $keyword ) {
+		$content_text = wp_strip_all_tags( $data['content'] );
+		$checks = array(
+			'keyword_in_title' => false !== stripos( $data['seo']['seo_title'], $keyword ),
+			'keyword_in_description' => false !== stripos( $data['seo']['meta_description'], $keyword ),
+			'keyword_in_slug' => false !== strpos( $data['seo']['slug'], sanitize_title( $keyword ) ),
+			'keyword_in_content' => false !== stripos( $content_text, $keyword ),
+			'keyword_in_heading' => (bool) preg_match( '/<h[2-4][^>]*>[^<]*' . preg_quote( $keyword, '/' ) . '/iu', $data['content'] ),
+			'title_length' => strlen( $data['seo']['seo_title'] ) <= 60,
+			'description_length' => strlen( $data['seo']['meta_description'] ) >= 120 && strlen( $data['seo']['meta_description'] ) <= 160,
+			'slug_length' => strlen( $data['seo']['slug'] ) <= 60,
+		);
+		$score = (int) round( count( array_filter( $checks ) ) / count( $checks ) * 100 );
+		return array( 'score' => $score, 'target' => 85, 'passed' => $score >= 85, 'checks' => $checks, 'note' => __( 'Estimasi internal. Skor final tetap dihitung oleh Rank Math pada editor WordPress.', 'ai-news-assistant' ) );
 	}
 	private function editorial_dateline( array $editorial_data ) {
 		$location = isset( $editorial_data['location'] ) ? sanitize_text_field( $editorial_data['location'] ) : '';
