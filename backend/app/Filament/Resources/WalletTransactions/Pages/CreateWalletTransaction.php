@@ -14,6 +14,12 @@ class CreateWalletTransaction extends CreateRecord
 
     protected function handleRecordCreation(array $data): Model
     {
-        return app(WalletService::class)->credit(User::findOrFail($data['user_id']), (float) $data['amount'], $data['type'], $data['description'], 'admin-'.str()->uuid(), auth()->id());
+        return app(WalletService::class)->adminAdjustment(
+            User::findOrFail($data['user_id']),
+            (float) $data['amount'],
+            $data['operation'],
+            $data['description'],
+            auth()->id(),
+        );
     }
 }

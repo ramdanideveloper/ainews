@@ -20,13 +20,21 @@ class WalletService
         return $this->change($u, -abs($amount), 'usage_debit', $description, $ref);
     }
 
+    public function adminAdjustment(User $user, float $amount, string $operation, string $description, ?int $adminId = null): WalletTransaction
+    {
+        $delta = $operation === 'deduct' ? -abs($amount) : abs($amount);
+        $type = $operation === 'deduct' ? 'admin_debit' : 'admin_credit';
+
+        return $this->change($user, $delta, $type, $description, 'admin-'.str()->uuid(), $adminId);
+    }
+
     public function refund(WalletTransaction $debit, string $description = 'AI request refund'): WalletTransaction
     {
         if ($debit->type !== 'usage_debit') {
             throw new RuntimeException('Only usage debits can be refunded.');
         }
 
-return $this->credit($debit->user, abs((float) $debit->amount), 'refund', $description, 'refund-'.$debit->id);
+        return $this->credit($debit->user, abs((float) $debit->amount), 'refund', $description, 'refund-'.$debit->id);
     }
 
     private function change(User $u, float $delta, string $type, string $description, ?string $ref, ?int $by = null): WalletTransaction

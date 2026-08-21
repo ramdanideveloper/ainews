@@ -12,7 +12,10 @@ class WalletTransactionForm
     {
         return $schema
             ->components([
-                Select::make('user_id')->relationship('user', 'email')->searchable()->preload()->required(), Select::make('type')->options(['topup' => 'Top Up', 'admin_adjustment' => 'Admin Adjustment'])->default('topup')->required(), TextInput::make('amount')->numeric()->prefix('Rp')->minValue(1)->required(), TextInput::make('description')->default('Manual top up by admin')->required(),
+                Select::make('user_id')->label('User')->relationship('user', 'email')->searchable()->preload()->required(),
+                Select::make('operation')->label('Perubahan Saldo')->options(['add' => 'Tambah Saldo', 'deduct' => 'Potong Saldo'])->default('add')->required(),
+                TextInput::make('amount')->label('Nominal')->numeric()->prefix('Rp')->minValue(1)->required(),
+                TextInput::make('description')->label('Catatan')->default('Penyesuaian saldo oleh admin')->maxLength(255)->required(),
             ]);
     }
 }

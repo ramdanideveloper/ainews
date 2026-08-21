@@ -19,6 +19,12 @@ class WalletTransactionResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
 
+    protected static ?string $navigationLabel = 'Saldo & Transaksi';
+
+    protected static ?string $modelLabel = 'Transaksi Saldo';
+
+    protected static ?string $pluralModelLabel = 'Saldo & Transaksi';
+
     public static function form(Schema $schema): Schema
     {
         return WalletTransactionForm::configure($schema);
