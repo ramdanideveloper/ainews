@@ -58,7 +58,7 @@ class AI_News_Assistant_Post_Handler {
 			'brief' => isset( $_POST['brief'] ) ? sanitize_textarea_field( wp_unslash( $_POST['brief'] ) ) : '',
 			'outline' => isset( $_POST['outline'] ) ? sanitize_textarea_field( wp_unslash( $_POST['outline'] ) ) : '',
 			'style' => isset( $_POST['style'] ) ? sanitize_key( $_POST['style'] ) : 'seo_news',
-			'length' => isset( $_POST['length'] ) ? sanitize_key( $_POST['length'] ) : 'medium',
+			'length' => isset( $_POST['length'] ) ? min( 900, max( 200, absint( $_POST['length'] ) ) ) : 500,
 			'audience' => isset( $_POST['audience'] ) ? sanitize_text_field( wp_unslash( $_POST['audience'] ) ) : '',
 			'editorial_data' => array(),
 		);

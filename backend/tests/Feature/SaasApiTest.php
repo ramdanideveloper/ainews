@@ -50,4 +50,15 @@ class SaasApiTest extends TestCase
         $this->assertDatabaseHas('usage_logs', ['request_type' => 'image_generate', 'image_count' => 1, 'status' => 'success']);
         $this->assertSame(1, UsageLog::where('request_type', 'image_generate')->count());
     }
+
+    public function test_article_word_target_must_be_between_two_hundred_and_nine_hundred(): void
+    {
+        $auth = $this->postJson('/api/auth/register', ['name' => 'Word Target Editor', 'email' => 'words@example.test', 'password' => 'password123', 'password_confirmation' => 'password123']);
+        $site = $this->withToken($auth->json('data.token'))->postJson('/api/sites/connect', ['site_name' => 'Word Target Site', 'site_url' => 'https://words.example.test', 'install_id' => '018f5b2d-3b5a-7f41-8c2e-aabbccddeeff']);
+
+        $this->withToken($site->json('data.site_token'))->withHeader('X-Site-URL', 'https://words.example.test')->postJson('/api/ai/generate-article', [
+            'title' => 'Artikel dengan target kata',
+            'payload' => ['length' => 100],
+        ])->assertUnprocessable()->assertJsonValidationErrors('payload.length');
+    }
 }
