@@ -7,6 +7,7 @@ use App\Models\AiProvider;
 use App\Models\RoutingRule;
 use App\Models\UsageLog;
 use App\Services\Providers\GeminiProvider;
+use App\Services\Providers\HuggingFaceProvider;
 use App\Services\Providers\MockProvider;
 use App\Services\Providers\OpenAiProvider;
 use RuntimeException;
@@ -65,7 +66,7 @@ class AiRouter
     private function adapter(string $provider): AiProviderInterface
     {
         return match ($provider) {
-            'gemini' => app(GeminiProvider::class),'openai','openrouter','deepseek' => app(OpenAiProvider::class),'mock' => app(MockProvider::class),default => throw new RuntimeException('Unsupported provider: '.$provider)
+            'gemini' => app(GeminiProvider::class),'huggingface' => app(HuggingFaceProvider::class),'openai','openrouter','deepseek' => app(OpenAiProvider::class),'mock' => app(MockProvider::class),default => throw new RuntimeException('Unsupported provider: '.$provider)
         };
     }
 }
