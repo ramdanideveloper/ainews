@@ -136,25 +136,15 @@ class AI_News_Assistant_Post_Handler {
 		if ( false === $source ) return new WP_Error( 'aina_image_source', __( 'File gambar dari provider tidak dapat dibaca.', 'ai-news-assistant' ) );
 		$source_width = imagesx( $source );
 		$source_height = imagesy( $source );
-		$target_ratio = 1200 / 630;
-		$source_ratio = $source_width / max( 1, $source_height );
-		if ( $source_ratio > $target_ratio ) {
-			$crop_height = $source_height;
-			$crop_width = (int) round( $source_height * $target_ratio );
-			$source_x = (int) floor( ( $source_width - $crop_width ) / 2 );
-			$source_y = 0;
-		} else {
-			$crop_width = $source_width;
-			$crop_height = (int) round( $source_width / $target_ratio );
-			$source_x = 0;
-			$source_y = (int) floor( ( $source_height - $crop_height ) / 2 );
-		}
 		$target = imagecreatetruecolor( 1200, 630 );
-		if ( in_array( $mime, array( 'image/png', 'image/webp' ), true ) ) {
-			imagealphablending( $target, false );
-			imagesavealpha( $target, true );
-		}
-		$copied = imagecopyresampled( $target, $source, 0, 0, $source_x, $source_y, 1200, 630, $crop_width, $crop_height );
+		$background = imagecolorallocate( $target, 28, 32, 38 );
+		imagefill( $target, 0, 0, $background );
+		$scale = min( 1200 / max( 1, $source_width ), 630 / max( 1, $source_height ) );
+		$draw_width = max( 1, (int) round( $source_width * $scale ) );
+		$draw_height = max( 1, (int) round( $source_height * $scale ) );
+		$target_x = (int) floor( ( 1200 - $draw_width ) / 2 );
+		$target_y = (int) floor( ( 630 - $draw_height ) / 2 );
+		$copied = imagecopyresampled( $target, $source, $target_x, $target_y, 0, 0, $draw_width, $draw_height, $source_width, $source_height );
 		if ( 'image/jpeg' === $mime ) $saved = $copied && imagejpeg( $target, $file, 90 );
 		elseif ( 'image/webp' === $mime ) $saved = function_exists( 'imagewebp' ) && $copied && imagewebp( $target, $file, 90 );
 		else $saved = $copied && imagepng( $target, $file, 6 );
