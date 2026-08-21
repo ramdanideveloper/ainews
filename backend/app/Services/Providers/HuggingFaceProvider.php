@@ -43,6 +43,10 @@ class HuggingFaceProvider implements AiProviderInterface
         }
 
         $providerModel = trim($mapping['providerId'], '/');
+        $parameters['image_size'] = ['width' => $parameters['width'], 'height' => $parameters['height']];
+        unset($parameters['width'], $parameters['height']);
+        $parameters['num_images'] = 1;
+        $parameters['output_format'] = 'jpeg';
         $query = '?_subdomain=queue';
         $headers = ['Authorization' => 'Bearer '.$provider->api_key, 'Accept' => 'application/json'];
         $queued = Http::connectTimeout(12)->timeout(60)->withHeaders($headers)->post('https://router.huggingface.co/fal-ai/'.$providerModel.$query, $parameters);

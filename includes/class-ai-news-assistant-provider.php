@@ -89,6 +89,7 @@ abstract class AI_News_Assistant_Provider_Base implements AI_News_Assistant_Prov
 
 		$seo_title = sanitize_text_field( $data['seo']['seo_title'] );
 		if ( false === stripos( $seo_title, $keyword ) ) $seo_title = $keyword . ': ' . $seo_title;
+		if ( 'hard_news' !== ( $input['style'] ?? '' ) && ! preg_match( '/\b(terbaik|ampuh|mudah|efektif|unggulan|penting)\b/iu', $seo_title ) ) $seo_title = $keyword . ': Panduan Terbaik dan Efektif';
 		$data['seo']['seo_title'] = $this->limit_text( $seo_title, 60 );
 		$data['seo']['focus_keyword'] = $keyword;
 
@@ -120,9 +121,27 @@ abstract class AI_News_Assistant_Provider_Base implements AI_News_Assistant_Prov
 			if ( preg_match( '/<h2([^>]*)>/i', $content ) ) $content = preg_replace( '/<h2([^>]*)>/i', '<h2$1>' . esc_html( ucfirst( $keyword ) ) . ': ', $content, 1 );
 			else $content = '<h2>' . esc_html( ucfirst( $keyword ) ) . '</h2>' . $content;
 		}
+		$content = $this->add_table_of_contents( $content );
+		$source_url = isset( $input['source_url'] ) ? esc_url( $input['source_url'] ) : '';
+		if ( '' !== $source_url && false === strpos( $content, $source_url ) ) $content .= '<p><strong>Sumber rujukan:</strong> <a href="' . $source_url . '" target="_blank" rel="noopener">Lihat sumber resmi</a>.</p>';
 		$opening = '<p>' . $prefix . esc_html( $lead_text ) . '</p>';
 		if ( '' !== $host && false !== stripos( wp_strip_all_tags( $content ), $host ) ) return $content;
 		return $opening . $content;
+	}
+	private function add_table_of_contents( $content ) {
+		$items = array();
+		$index = 0;
+		$updated = preg_replace_callback( '/<h2([^>]*)>(.*?)<\/h2>/isu', function ( $match ) use ( &$items, &$index ) {
+			$index++;
+			$title = trim( wp_strip_all_tags( $match[2] ) );
+			$id = 'bagian-' . $index . '-' . sanitize_title( $title );
+			$items[] = '<li><a href="#' . esc_attr( $id ) . '">' . esc_html( $title ) . '</a></li>';
+			$attributes = preg_replace( '/\s+id=("[^"]*"|\'[^\']*\')/i', '', $match[1] );
+			return '<h2' . $attributes . ' id="' . esc_attr( $id ) . '">' . $match[2] . '</h2>';
+		}, $content );
+		if ( count( $items ) < 3 ) return $updated;
+		$toc = '<!-- wp:rank-math/toc-block {"title":"Daftar Isi"} --><div class="wp-block-rank-math-toc-block" id="rank-math-table-of-contents"><h2>Daftar Isi</h2><nav><ul>' . implode( '', $items ) . '</ul></nav></div><!-- /wp:rank-math/toc-block -->';
+		return $toc . $updated;
 	}
 	private function seo_audit( array $data, $keyword ) {
 		$content_text = wp_strip_all_tags( $data['content'] );
@@ -135,6 +154,10 @@ abstract class AI_News_Assistant_Provider_Base implements AI_News_Assistant_Prov
 			'title_length' => strlen( $data['seo']['seo_title'] ) <= 60,
 			'description_length' => strlen( $data['seo']['meta_description'] ) >= 120 && strlen( $data['seo']['meta_description'] ) <= 160,
 			'slug_length' => strlen( $data['seo']['slug'] ) <= 60,
+			'outbound_source_link' => (bool) preg_match( '/<a\b[^>]*href=["\']https?:\/\//i', $data['content'] ),
+			'table_of_contents' => false !== strpos( $data['content'], 'wp-block-rank-math-toc-block' ),
+			'sentiment_word_in_title' => (bool) preg_match( '/\b(terbaik|mudah|efektif|unggulan|penting|buruk|berbahaya)\b/iu', $data['seo']['seo_title'] ),
+			'power_word_in_title' => (bool) preg_match( '/\b(ampuh|lengkap|praktis|rahasia|terbukti|wajib|panduan)\b/iu', $data['seo']['seo_title'] ),
 		);
 		$score = (int) round( count( array_filter( $checks ) ) / count( $checks ) * 100 );
 		return array( 'score' => $score, 'target' => 85, 'passed' => $score >= 85, 'checks' => $checks, 'note' => __( 'Estimasi internal. Skor final tetap dihitung oleh Rank Math pada editor WordPress.', 'ai-news-assistant' ) );
