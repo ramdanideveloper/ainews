@@ -116,22 +116,11 @@ class AI_News_Assistant_Post_Handler {
 		if ( ! empty( $upload['error'] ) ) return new WP_Error( 'aina_image_upload', $upload['error'] );
 		require_once ABSPATH . 'wp-admin/includes/image.php';
 		if ( '16:9' === ( $payload['aspect_ratio'] ?? '' ) ) {
-			$editor = wp_get_image_editor( $upload['file'] );
-			if ( is_wp_error( $editor ) ) {
-				wp_delete_file( $upload['file'] );
-				return new WP_Error( 'aina_image_editor', __( 'Thumbnail tidak dapat diproses ke ukuran 1200 x 630 piksel.', 'ai-news-assistant' ) );
-			}
-			$resized = $editor->resize( 1200, 630, true );
+			$resized = $this->resize_rank_math_thumbnail( $upload['file'], $mime );
 			if ( is_wp_error( $resized ) ) {
 				wp_delete_file( $upload['file'] );
-				return new WP_Error( 'aina_image_resize', $resized->get_error_message() );
+				return $resized;
 			}
-			$saved = $editor->save( $upload['file'] );
-			if ( is_wp_error( $saved ) || 1200 !== (int) ( $saved['width'] ?? 0 ) || 630 !== (int) ( $saved['height'] ?? 0 ) ) {
-				wp_delete_file( $upload['file'] );
-				return new WP_Error( 'aina_image_dimensions', __( 'Provider menghasilkan gambar yang terlalu kecil untuk thumbnail SEO 1200 x 630 piksel.', 'ai-news-assistant' ) );
-			}
-			if ( ! empty( $saved['mime-type'] ) ) $mime = sanitize_mime_type( $saved['mime-type'] );
 		}
 		$attachment_id = wp_insert_attachment( array( 'post_mime_type' => $mime, 'post_title' => sanitize_text_field( $payload['title'] ), 'post_excerpt' => sanitize_text_field( $result['caption'] ?? $payload['title'] ), 'post_status' => 'inherit' ), $upload['file'] );
 		if ( is_wp_error( $attachment_id ) ) return $attachment_id;
@@ -139,6 +128,39 @@ class AI_News_Assistant_Post_Handler {
 		update_post_meta( $attachment_id, '_wp_attachment_image_alt', sanitize_text_field( $result['alt_text'] ?? $payload['keyword'] ?? $payload['title'] ) );
 		update_post_meta( $attachment_id, '_aina_generated_image', 1 );
 		return $attachment_id;
+	}
+	private function resize_rank_math_thumbnail( $file, $mime ) {
+		if ( ! function_exists( 'imagecreatefromstring' ) || ! function_exists( 'imagecreatetruecolor' ) ) return new WP_Error( 'aina_image_gd', __( 'Ekstensi GD diperlukan untuk membuat thumbnail SEO 1200 x 630 piksel.', 'ai-news-assistant' ) );
+		$source_bytes = file_get_contents( $file );
+		$source = false !== $source_bytes ? imagecreatefromstring( $source_bytes ) : false;
+		if ( false === $source ) return new WP_Error( 'aina_image_source', __( 'File gambar dari provider tidak dapat dibaca.', 'ai-news-assistant' ) );
+		$source_width = imagesx( $source );
+		$source_height = imagesy( $source );
+		$target_ratio = 1200 / 630;
+		$source_ratio = $source_width / max( 1, $source_height );
+		if ( $source_ratio > $target_ratio ) {
+			$crop_height = $source_height;
+			$crop_width = (int) round( $source_height * $target_ratio );
+			$source_x = (int) floor( ( $source_width - $crop_width ) / 2 );
+			$source_y = 0;
+		} else {
+			$crop_width = $source_width;
+			$crop_height = (int) round( $source_width / $target_ratio );
+			$source_x = 0;
+			$source_y = (int) floor( ( $source_height - $crop_height ) / 2 );
+		}
+		$target = imagecreatetruecolor( 1200, 630 );
+		if ( in_array( $mime, array( 'image/png', 'image/webp' ), true ) ) {
+			imagealphablending( $target, false );
+			imagesavealpha( $target, true );
+		}
+		$copied = imagecopyresampled( $target, $source, 0, 0, $source_x, $source_y, 1200, 630, $crop_width, $crop_height );
+		if ( 'image/jpeg' === $mime ) $saved = $copied && imagejpeg( $target, $file, 90 );
+		elseif ( 'image/webp' === $mime ) $saved = function_exists( 'imagewebp' ) && $copied && imagewebp( $target, $file, 90 );
+		else $saved = $copied && imagepng( $target, $file, 6 );
+		imagedestroy( $source );
+		imagedestroy( $target );
+		return $saved ? true : new WP_Error( 'aina_image_resize', __( 'Thumbnail gagal disimpan dalam ukuran 1200 x 630 piksel.', 'ai-news-assistant' ) );
 	}
 	private function save_meta( $post_id, array $data ) {
 		$seo = isset( $data['seo'] ) ? (array) $data['seo'] : array();
