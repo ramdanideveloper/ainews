@@ -1,3 +1,12 @@
+.aina-workflow-picker{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;max-width:1100px;margin:0 0 16px}
+.aina-workflow-option{display:flex;align-items:center;gap:13px;min-height:78px;padding:15px 17px;text-align:left;border:1px solid #d8e0ea;border-radius:10px;background:#fff;color:#273548;cursor:pointer;box-shadow:0 1px 2px rgba(18,32,54,.04);transition:border-color .15s,box-shadow .15s,background .15s}
+.aina-workflow-option:hover{border-color:#9ebbe8;background:#f8fbff}
+.aina-workflow-option.is-active{border-color:#2764d7;background:#f2f7ff;box-shadow:0 0 0 1px #2764d7}
+.aina-workflow-option>.dashicons{display:grid;place-items:center;flex:0 0 auto;width:39px;height:39px;border-radius:9px;background:#edf2f8;color:#617087;font-size:20px}
+.aina-workflow-option.is-active>.dashicons{background:#dfeaff;color:#185abd}
+.aina-workflow-option>span:last-child{display:flex;min-width:0;flex-direction:column;gap:4px}
+.aina-workflow-option strong{font-size:14px;color:#17243a}
+.aina-workflow-option small{color:#6e7b8e;font-size:12px;line-height:1.4}
 .aina-source-panel{max-width:1100px;margin-bottom:16px;background:linear-gradient(135deg,#f8fbff 0,#fff 70%)}
 .aina-source-panel form{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px 12px}
 .aina-source-panel form label{display:block;min-width:0;margin:0;font-weight:650;color:#273548}
@@ -10,4 +19,4 @@
 .aina-source-card h3,.aina-source-card h4{margin:5px 0 8px}
 .aina-source-card a{display:block;overflow-wrap:anywhere}
 .aina-source-card ul{margin-bottom:0}
-@media(max-width:800px){.aina-source-panel form{grid-template-columns:1fr;align-items:stretch}.aina-source-panel form .button{width:100%}.aina-source-panel .aina-message{grid-column:auto}.aina-source-card{grid-template-columns:1fr}}
+@media(max-width:800px){.aina-workflow-picker{grid-template-columns:1fr}.aina-source-panel form{grid-template-columns:1fr;align-items:stretch}.aina-source-panel form .button{width:100%}.aina-source-panel .aina-message{grid-column:auto}.aina-source-card{grid-template-columns:1fr}}
