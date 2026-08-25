@@ -120,11 +120,13 @@ abstract class AI_News_Assistant_Provider_Base implements AI_News_Assistant_Prov
 		$host = (string) wp_parse_url( home_url( '/' ), PHP_URL_HOST );
 		$host = preg_replace( '/^www\./i', '', $host );
 		$location = $this->editorial_dateline( isset( $input['editorial_data'] ) ? (array) $input['editorial_data'] : array() );
-		$prefix = '<strong><a href="' . esc_url( home_url( '/' ) ) . '">' . esc_html( $host ) . '</a>';
+		$prefix = '<a href="' . esc_url( home_url( '/' ) ) . '">' . esc_html( $host ) . '</a>';
 		if ( '' !== $location ) $prefix .= ' | ' . esc_html( $location );
-		$prefix .= '</strong> – ';
+		$prefix .= ' – ';
 		$lead_text = trim( wp_strip_all_tags( (string) $lead ) );
-		if ( '' !== $keyword && false === stripos( $lead_text, $keyword ) ) $lead_text = ucfirst( $keyword ) . ' — ' . $lead_text;
+		$input_title = trim( wp_strip_all_tags( (string) ( $input['title'] ?? '' ) ) );
+		if ( '' !== $input_title ) $lead_text = preg_replace( '/^' . preg_quote( $input_title, '/' ) . '\s*(?:—|–|-|:)\s*/iu', '', $lead_text );
+		if ( '' !== $keyword && false === stripos( $lead_text, $keyword ) && 'hard_news' !== ( $input['style'] ?? '' ) ) $lead_text = ucfirst( $keyword ) . '. ' . $lead_text;
 		if ( '' !== $keyword && ! preg_match( '/<h[2-4][^>]*>[^<]*' . preg_quote( $keyword, '/' ) . '/iu', $content ) ) {
 			if ( preg_match( '/<h2([^>]*)>/i', $content ) ) $content = preg_replace( '/<h2([^>]*)>/i', '<h2$1>' . esc_html( ucfirst( $keyword ) ) . ': ', $content, 1 );
 			else $content = '<h2>' . esc_html( ucfirst( $keyword ) ) . '</h2>' . $content;
@@ -176,7 +178,7 @@ abstract class AI_News_Assistant_Provider_Base implements AI_News_Assistant_Prov
 		if ( preg_match( '/(?:Kecamatan|Kec\.?|Kelurahan|Desa)\s+([^,]+)/iu', $location, $match ) ) $location = $match[1];
 		elseif ( preg_match( '/(?:Kabupaten|Kota)\s+([^,]+)/iu', $location, $match ) ) $location = $match[1];
 		else $location = trim( explode( ',', $location )[0] );
-		return function_exists( 'mb_strtoupper' ) ? mb_strtoupper( trim( $location ), 'UTF-8' ) : strtoupper( trim( $location ) );
+		return function_exists( 'mb_convert_case' ) ? mb_convert_case( trim( $location ), MB_CASE_TITLE, 'UTF-8' ) : ucwords( strtolower( trim( $location ) ) );
 	}
 	private function limit_text( $text, $limit, $suffix = '' ) {
 		$text = trim( (string) $text );
