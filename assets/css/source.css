@@ -1,0 +1,11 @@
+.aina-source-panel{max-width:1100px;margin-bottom:16px;background:linear-gradient(135deg,#f8fbff,#fff)}
+.aina-source-panel form{display:flex;align-items:flex-end;gap:12px}
+.aina-source-panel form label{flex:1;font-weight:650}
+.aina-source-panel input[type=url]{display:block;width:100%;max-width:none;margin-top:7px;padding:8px 10px;border:1px solid #c9d0da;border-radius:6px}
+.aina-source-panel .aina-message{flex-basis:100%}
+.aina-source-card{display:grid;grid-template-columns:.8fr 1.3fr 1fr;gap:16px;margin-top:18px;padding-top:18px;border-top:1px solid #dfe6ef}
+.aina-source-card>div{min-width:0}
+.aina-source-card h3,.aina-source-card h4{margin:5px 0 8px}
+.aina-source-card a{display:block;overflow-wrap:anywhere}
+.aina-source-card ul{margin-bottom:0}
+@media(max-width:800px){.aina-source-panel form{align-items:stretch;flex-direction:column}.aina-source-panel form .button{width:100%}.aina-source-card{grid-template-columns:1fr}}

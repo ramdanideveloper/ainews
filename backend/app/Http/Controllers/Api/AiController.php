@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Services\AiGatewayService;
+use App\Services\SourceArticleService;
 use Illuminate\Http\Request;
 use Throwable;
 
@@ -11,6 +12,20 @@ class AiController extends ApiController
     public function detect(Request $r, AiGatewayService $g)
     {
         return $this->text($r, $g, 'detect_news_type');
+    }
+
+    public function analyzeSource(Request $r, AiGatewayService $gateway, SourceArticleService $sources)
+    {
+        $payload = $r->validate(['url' => 'required|url:http,https|max:2000']);
+        try {
+            $source = $sources->extract($payload['url']);
+
+            return $this->ok($gateway->text('analyze_source', ['title' => $source['source_title'], 'payload' => $source], $r->attributes->get('connected_site')));
+        } catch (Throwable $e) {
+            $code = $e->getMessage() === 'Saldo tidak mencukupi.' ? 'insufficient_balance' : 'source_analysis_failed';
+
+            return $this->fail($code, $e->getMessage(), $code === 'insufficient_balance' ? 402 : 422);
+        }
     }
 
     public function generateNews(Request $r, AiGatewayService $g)
@@ -30,7 +45,7 @@ class AiController extends ApiController
 
     public function text(Request $r, AiGatewayService $gateway, string $type)
     {
-        $payload = $r->validate(['title' => 'nullable|string|max:500', 'payload' => 'nullable|array', 'payload.length' => 'nullable|integer|min:200|max:900', 'payload.structure' => 'nullable|in:standard,listicle,tutorial,faq', 'payload.point_count' => 'nullable|integer|min:2|max:20', 'payload.point_word_count' => 'nullable|integer|min:50|max:200', 'payload.source_url' => 'nullable|url:http,https|max:2000', 'content' => 'nullable|string|max:100000', 'editorial_data' => 'nullable|array']);
+        $payload = $r->validate(['title' => 'nullable|string|max:500', 'payload' => 'nullable|array', 'payload.length' => 'nullable|integer|min:200|max:900', 'payload.structure' => 'nullable|in:standard,listicle,tutorial,faq', 'payload.point_count' => 'nullable|integer|min:2|max:20', 'payload.point_word_count' => 'nullable|integer|min:50|max:200', 'payload.source_url' => 'nullable|url:http,https|max:2000', 'news_type' => 'nullable|string|max:100', 'source' => 'nullable|url:http,https|max:2000', 'facts' => 'nullable|string|max:50000', 'raw_text' => 'nullable|string|max:50000', 'style' => 'nullable|string|max:100', 'length' => 'nullable|string|max:50', 'source_analysis' => 'nullable|array', 'content' => 'nullable|string|max:100000', 'editorial_data' => 'nullable|array']);
         $site = $r->attributes->get('connected_site');
         try {
             return $this->ok($gateway->text($type, $payload, $site));

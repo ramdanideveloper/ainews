@@ -37,6 +37,14 @@ abstract class AI_News_Assistant_Provider_Base implements AI_News_Assistant_Prov
 		$data['social_captions'] = wp_parse_args( (array) $data['social_captions'], array(
 			'instagram_facebook' => '', 'twitter_x' => '', 'whatsapp_telegram' => '',
 		) );
+		if ( ! empty( $input['source_analysis'] ) ) {
+			$data['review_status'] = 'Needs Verification';
+			$data['fact_checklist']['needs_verification'] = true;
+			$source = (array) $input['source_analysis'];
+			$url = isset( $source['source_url'] ) ? esc_url( $source['source_url'] ) : '';
+			$media = sanitize_text_field( $source['source_media'] ?? $source['source_domain'] ?? '' );
+			if ( $url && false === strpos( $data['content'], $url ) ) $data['content'] .= '<p class="aina-source-attribution"><em>Dilansir dari <a href="' . $url . '" target="_blank" rel="noopener">' . esc_html( $media ?: $url ) . '</a>. Seluruh informasi wajib dibandingkan kembali dengan sumber asli sebelum publikasi.</em></p>';
+		}
 		return $data;
 	}
 	private function complete_fact_checklist( array $facts, array $input, array $data ) {

@@ -5,6 +5,7 @@ class AI_News_Assistant_Post_Handler {
 	const GENERATED_META = '_aina_generated';
 	public function __construct() {
 		add_action( 'wp_ajax_aina_detect_news_type', array( $this, 'ajax_detect_news_type' ) );
+		add_action( 'wp_ajax_aina_analyze_source', array( $this, 'ajax_analyze_source' ) );
 		add_action( 'wp_ajax_aina_generate', array( $this, 'ajax_generate' ) );
 		add_action( 'wp_ajax_aina_generate_article', array( $this, 'ajax_generate_article' ) );
 		add_action( 'wp_ajax_aina_generate_image', array( $this, 'ajax_generate_image' ) );
@@ -19,16 +20,29 @@ class AI_News_Assistant_Post_Handler {
 		$editorial_json = isset( $_POST['editorial_data'] ) ? wp_unslash( $_POST['editorial_data'] ) : '';
 		$editorial_data = json_decode( $editorial_json, true );
 		$editorial_data = is_array( $editorial_data ) ? $this->clean_array( $editorial_data ) : array();
+		$source_json = isset( $_POST['source_analysis'] ) ? wp_unslash( $_POST['source_analysis'] ) : '';
+		$source_analysis = json_decode( $source_json, true );
+		$source_analysis = is_array( $source_analysis ) ? $this->clean_array( $source_analysis ) : array();
 		return array(
 			'title' => isset( $_POST['title'] ) ? sanitize_text_field( wp_unslash( $_POST['title'] ) ) : '',
 			'news_type' => isset( $_POST['news_type'] ) ? sanitize_key( $_POST['news_type'] ) : '',
 			'editorial_data' => $editorial_data,
 			'source' => isset( $_POST['source'] ) ? esc_url_raw( wp_unslash( $_POST['source'] ) ) : '',
+			'source_analysis' => $source_analysis,
 			'facts' => isset( $_POST['facts'] ) ? sanitize_textarea_field( wp_unslash( $_POST['facts'] ) ) : '',
 			'raw_text' => isset( $_POST['raw_text'] ) ? sanitize_textarea_field( wp_unslash( $_POST['raw_text'] ) ) : '',
 			'style' => isset( $_POST['style'] ) ? sanitize_key( $_POST['style'] ) : 'hard_news',
 			'length' => isset( $_POST['length'] ) ? sanitize_key( $_POST['length'] ) : 'medium',
 		);
+	}
+	public function ajax_analyze_source() {
+		$this->check_ajax();
+		if ( empty( AI_News_Assistant::settings()['site_token'] ) ) wp_send_json_error( array( 'message' => __( 'Hubungkan akun sebelum menganalisis URL sumber.', 'ai-news-assistant' ) ), 403 );
+		$url = isset( $_POST['source_url'] ) ? esc_url_raw( wp_unslash( $_POST['source_url'] ) ) : '';
+		if ( '' === $url ) wp_send_json_error( array( 'message' => __( 'Masukkan URL berita sumber.', 'ai-news-assistant' ) ), 400 );
+		$result = $this->provider()->analyze_source( $url );
+		if ( is_wp_error( $result ) ) wp_send_json_error( array( 'message' => $result->get_error_message() ), 500 );
+		wp_send_json_success( array( 'source' => $this->clean_array( $result ) ) );
 	}
 	public function ajax_detect_news_type() {
 		$this->check_ajax();
@@ -167,6 +181,8 @@ class AI_News_Assistant_Post_Handler {
 		update_post_meta( $post_id, '_aina_fact_checklist', $this->clean_array( isset( $data['fact_checklist'] ) ? $data['fact_checklist'] : array() ) );
 		update_post_meta( $post_id, '_aina_seo', $this->clean_array( $seo ) );
 		update_post_meta( $post_id, '_aina_seo_audit', $this->clean_array( isset( $data['seo_audit'] ) ? $data['seo_audit'] : array() ) );
+		if ( ! empty( $data['source_attribution'] ) ) update_post_meta( $post_id, '_aina_source_attribution', $this->clean_array( $data['source_attribution'] ) );
+		if ( ! empty( $data['similarity'] ) ) update_post_meta( $post_id, '_aina_source_similarity', $this->clean_array( $data['similarity'] ) );
 		update_post_meta( $post_id, '_aina_social_captions', $this->clean_array( isset( $data['social_captions'] ) ? $data['social_captions'] : array() ) );
 		update_post_meta( $post_id, '_aina_usage', $this->clean_array( isset( $data['usage'] ) ? $data['usage'] : array() ) );
 		update_post_meta( $post_id, '_aina_generation_notes', $this->clean_array( array( 'alternative_titles' => isset( $data['alternative_titles'] ) ? $data['alternative_titles'] : array(), 'summary_points' => isset( $data['summary_points'] ) ? $data['summary_points'] : array(), 'verification_notes' => isset( $data['verification_notes'] ) ? $data['verification_notes'] : array(), 'generated_at' => current_time( 'mysql' ) ) ) );
@@ -199,8 +215,10 @@ class AI_News_Assistant_Post_Handler {
 		$seo = (array) get_post_meta( $post->ID, '_aina_seo', true );
 		$captions = (array) get_post_meta( $post->ID, '_aina_social_captions', true );
 		$notes = (array) get_post_meta( $post->ID, '_aina_generation_notes', true );
+		$source = (array) get_post_meta( $post->ID, '_aina_source_attribution', true );
+		$similarity = (array) get_post_meta( $post->ID, '_aina_source_similarity', true );
 		echo '<div class="aina-metabox"><p><strong>' . esc_html__( 'Review status:', 'ai-news-assistant' ) . '</strong> ' . esc_html( $status ) . '</p>';
-		$this->meta_table( __( 'Fact checklist', 'ai-news-assistant' ), $facts ); $this->meta_table( __( 'SEO suggestion', 'ai-news-assistant' ), $seo ); $this->meta_table( __( 'Social captions', 'ai-news-assistant' ), $captions ); $this->meta_table( __( 'Catatan generate', 'ai-news-assistant' ), $notes );
+		$this->meta_table( __( 'Fact checklist', 'ai-news-assistant' ), $facts ); if ( $source ) $this->meta_table( __( 'Sumber lansiran', 'ai-news-assistant' ), $source ); if ( $similarity ) $this->meta_table( __( 'Audit kemiripan', 'ai-news-assistant' ), $similarity ); $this->meta_table( __( 'SEO suggestion', 'ai-news-assistant' ), $seo ); $this->meta_table( __( 'Social captions', 'ai-news-assistant' ), $captions ); $this->meta_table( __( 'Catatan generate', 'ai-news-assistant' ), $notes );
 		echo '</div>';
 	}
 	private function meta_table( $title, array $items ) {

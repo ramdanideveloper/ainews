@@ -24,6 +24,7 @@ Route::middleware(['auth:sanctum', 'throttle:account-api'])->group(function () {
 });
 Route::middleware(['site.token', 'throttle:site-api'])->group(function () {
     Route::post('/ai/detect-news-type', [AiController::class, 'detect']);
+    Route::post('/ai/analyze-source', [AiController::class, 'analyzeSource']);
     Route::post('/ai/generate-news', [AiController::class, 'generateNews']);
     Route::post('/ai/generate-article', [AiController::class, 'generateArticle']);
     Route::post('/ai/rewrite', [AiController::class, 'rewrite']);

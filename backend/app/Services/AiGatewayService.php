@@ -24,6 +24,35 @@ class AiGatewayService
             $in = $result['input_tokens'] ?: $this->billing->estimateTokens(json_encode($messages));
             $out = $result['output_tokens'] ?: $this->billing->estimateTokens($result['content']);
             $data = $this->decode($result['content']);
+            $similarityCorrected = false;
+            $similarity = $type === 'generate_news' ? $this->sourceSimilarity($data, $payload) : null;
+            if ($similarity && $similarity['percent'] > 25) {
+                try {
+                    $rewriteMessages = $this->originalityCorrectionMessages($payload, $data, $similarity);
+                    $rewriteResult = $this->router->text($type, $rewriteMessages, ['reasoning_effort' => 'low', 'max_completion_tokens' => 6000]);
+                    $in += $rewriteResult['input_tokens'] ?: $this->billing->estimateTokens(json_encode($rewriteMessages));
+                    $out += $rewriteResult['output_tokens'] ?: $this->billing->estimateTokens($rewriteResult['content']);
+                    $rewriteData = $this->decode($rewriteResult['content']);
+                    $rewriteSimilarity = $this->sourceSimilarity($rewriteData, $payload);
+                    if ($rewriteSimilarity && $rewriteSimilarity['percent'] < $similarity['percent']) {
+                        $data = $rewriteData;
+                        $similarity = $rewriteSimilarity;
+                    }
+                    $similarityCorrected = true;
+                } catch (Throwable $similarityError) {
+                    report($similarityError);
+                }
+            }
+            if ($similarity) {
+                $similarity['ai_rewrite_performed'] = $similarityCorrected;
+                $data['similarity'] = $similarity;
+                $source = (array) ($payload['source_analysis'] ?? []);
+                $data['source_attribution'] = array_intersect_key($source, array_flip(['source_url', 'source_domain', 'source_media', 'source_title', 'source_author', 'source_published_at', 'attribution']));
+                $data['review_status'] = 'Needs Verification';
+                if ($similarity['percent'] > 25) {
+                    $data['verification_notes'] = array_values(array_unique(array_merge((array) ($data['verification_notes'] ?? []), ['Kemiripan frasa dengan sumber masih tinggi. Tulis ulang dan bandingkan manual sebelum publish.'])));
+                }
+            }
             $structure = $type === 'generate_article' ? $this->articleStructure($payload) : 'standard';
             $pointTarget = $structure !== 'standard' ? $this->articlePointTarget($payload) : null;
             $pointWords = $pointTarget ? $this->articlePointWordTarget($payload) : null;
@@ -106,7 +135,7 @@ class AiGatewayService
             }
             $bill = $this->billing->textCharge($in, $out, $result['provider_model']);
 
-            return DB::transaction(function () use ($type, $actor, $guest, $result, $in, $out, $bill, $data, $wordTarget, $actualWords, $expanded, $structure, $pointTarget, $pointWords, $actualPoints, $structureCorrected, $seoAudit, $seoCorrected) {
+            return DB::transaction(function () use ($type, $payload, $actor, $guest, $result, $in, $out, $bill, $data, $wordTarget, $actualWords, $expanded, $structure, $pointTarget, $pointWords, $actualPoints, $structureCorrected, $seoAudit, $seoCorrected, $similarity, $similarityCorrected) {
                 $tx = null;
                 $remaining = null;
                 if ($guest) {
@@ -142,8 +171,17 @@ class AiGatewayService
                     $usage['seo_target_met'] = $seoAudit['score'] >= 85;
                     $usage['seo_correction_performed'] = $seoCorrected;
                 }
+                if ($similarity) {
+                    $usage['source_similarity_percent'] = $similarity['percent'];
+                    $usage['source_similarity_passed'] = $similarity['passed'];
+                    $usage['source_rewrite_performed'] = $similarityCorrected;
+                }
 
-                return $type === 'detect_news_type' ? $this->formatDetection($data, $usage) : $this->formatText($data, $usage);
+                return match ($type) {
+                    'detect_news_type' => $this->formatDetection($data, $usage),
+                    'analyze_source' => $this->formatSource($data, $payload, $usage),
+                    default => $this->formatText($data, $usage),
+                };
             });
         } catch (Throwable $e) {
             UsageLog::create(['user_id' => $guest ? null : $actor->user_id, 'connected_site_id' => $guest ? null : $actor->id, 'install_id' => $actor->install_id, 'site_url' => $actor->site_url, 'request_type' => $type, 'free_trial_used' => false, 'status' => 'failed', 'error_message' => substr($e->getMessage(), 0, 1000)]);
@@ -187,12 +225,84 @@ class AiGatewayService
 
     private function formatText(array $d, array $usage): array
     {
-        return ['title' => $d['title'] ?? $d['main_title'] ?? '', 'alternative_titles' => (array) ($d['alternative_titles'] ?? []), 'lead' => $d['lead'] ?? '', 'content_html' => $d['content_html'] ?? $d['content'] ?? '', 'summary_points' => (array) ($d['summary_points'] ?? []), 'verification_notes' => (array) ($d['verification_notes'] ?? []), 'fact_checklist' => $d['fact_checklist'] ?? [], 'seo_title' => $d['seo_title'] ?? ($d['seo']['seo_title'] ?? ''), 'meta_description' => $d['meta_description'] ?? ($d['seo']['meta_description'] ?? ''), 'focus_keyword' => $d['focus_keyword'] ?? ($d['seo']['focus_keyword'] ?? ''), 'slug' => $d['slug'] ?? ($d['seo']['slug'] ?? ''), 'tags' => (array) ($d['tags'] ?? ($d['seo']['tags'] ?? [])), 'category_suggestion' => $d['category_suggestion'] ?? ($d['seo']['category_suggestion'] ?? ''), 'seo_audit' => $d['seo_audit'] ?? [], 'social_captions' => $d['social_captions'] ?? [], 'review_status' => $d['review_status'] ?? 'Needs Verification', 'usage' => $usage];
+        return ['title' => $d['title'] ?? $d['main_title'] ?? '', 'alternative_titles' => (array) ($d['alternative_titles'] ?? []), 'lead' => $d['lead'] ?? '', 'content_html' => $d['content_html'] ?? $d['content'] ?? '', 'summary_points' => (array) ($d['summary_points'] ?? []), 'verification_notes' => (array) ($d['verification_notes'] ?? []), 'fact_checklist' => $d['fact_checklist'] ?? [], 'seo_title' => $d['seo_title'] ?? ($d['seo']['seo_title'] ?? ''), 'meta_description' => $d['meta_description'] ?? ($d['seo']['meta_description'] ?? ''), 'focus_keyword' => $d['focus_keyword'] ?? ($d['seo']['focus_keyword'] ?? ''), 'slug' => $d['slug'] ?? ($d['seo']['slug'] ?? ''), 'tags' => (array) ($d['tags'] ?? ($d['seo']['tags'] ?? [])), 'category_suggestion' => $d['category_suggestion'] ?? ($d['seo']['category_suggestion'] ?? ''), 'seo_audit' => $d['seo_audit'] ?? [], 'source_attribution' => $d['source_attribution'] ?? [], 'similarity' => $d['similarity'] ?? [], 'social_captions' => $d['social_captions'] ?? [], 'review_status' => $d['review_status'] ?? 'Needs Verification', 'usage' => $usage];
     }
 
     private function formatDetection(array $data, array $usage): array
     {
         return ['news_type' => $data['news_type'] ?? 'explainer', 'news_type_label' => $data['news_type_label'] ?? 'Explainer', 'subtype' => $data['subtype'] ?? 'Informasi / Analisis', 'confidence' => (int) ($data['confidence'] ?? 50), 'required_data' => (array) ($data['required_data'] ?? []), 'warnings' => (array) ($data['warnings'] ?? []), 'review_status' => $data['review_status'] ?? 'Needs Verification', 'usage' => $usage];
+    }
+
+    private function formatSource(array $data, array $payload, array $usage): array
+    {
+        $source = (array) data_get($payload, 'payload', []);
+
+        return [
+            'source_url' => $source['source_url'] ?? '',
+            'source_domain' => $source['source_domain'] ?? '',
+            'source_media' => $source['source_media'] ?? '',
+            'source_title' => $source['source_title'] ?? '',
+            'source_author' => $source['source_author'] ?? '',
+            'source_published_at' => $source['source_published_at'] ?? '',
+            'source_shingles' => $this->textShingles((string) ($source['source_text'] ?? '')),
+            'suggested_title' => $data['suggested_title'] ?? $source['source_title'] ?? '',
+            'news_type' => $data['news_type'] ?? 'explainer',
+            'news_type_label' => $data['news_type_label'] ?? 'Explainer',
+            'subtype' => $data['subtype'] ?? '',
+            'facts' => (array) ($data['facts'] ?? []),
+            'quotes' => $this->shortQuotes((array) ($data['quotes'] ?? [])),
+            'fact_checklist' => (array) ($data['fact_checklist'] ?? []),
+            'warnings' => array_values(array_unique(array_merge((array) ($data['warnings'] ?? []), ['Bandingkan kembali seluruh fakta dan kutipan dengan halaman sumber sebelum publish.']))),
+            'attribution' => $data['attribution'] ?? 'Berdasarkan laporan '.$source['source_media'].'.',
+            'review_status' => 'Needs Verification',
+            'usage' => $usage,
+        ];
+    }
+
+    private function sourceSimilarity(array $data, array $payload): ?array
+    {
+        $sourceHashes = array_values((array) data_get($payload, 'source_analysis.source_shingles', []));
+        if ($sourceHashes === []) {
+            return null;
+        }
+        $generated = $this->textShingles(trim((string) ($data['lead'] ?? '')).' '.strip_tags((string) ($data['content_html'] ?? $data['content'] ?? '')));
+        if ($generated === []) {
+            return ['percent' => 0, 'threshold' => 25, 'passed' => true, 'matched_shingles' => 0];
+        }
+        $matched = count(array_intersect($generated, $sourceHashes));
+        $percent = round($matched / count($generated) * 100, 1);
+
+        return ['percent' => $percent, 'threshold' => 25, 'passed' => $percent <= 25, 'matched_shingles' => $matched];
+    }
+
+    private function shortQuotes(array $quotes): array
+    {
+        return array_values(array_filter(array_map(function ($quote) {
+            $quote = is_array($quote) ? implode(' — ', array_map('strval', array_values($quote))) : (string) $quote;
+            preg_match_all('/\S+/u', trim($quote), $words);
+
+            return implode(' ', array_slice($words[0], 0, 25));
+        }, array_slice($quotes, 0, 2))));
+    }
+
+    private function textShingles(string $text): array
+    {
+        preg_match_all('/[\p{L}\p{N}]+/u', mb_strtolower(strip_tags($text)), $matches);
+        $words = $matches[0];
+        $hashes = [];
+        for ($index = 0; $index <= count($words) - 7 && count($hashes) < 800; $index++) {
+            $hashes[] = hash('sha256', implode(' ', array_slice($words, $index, 7)));
+        }
+
+        return array_values(array_unique($hashes));
+    }
+
+    private function originalityCorrectionMessages(array $payload, array $draft, array $similarity): array
+    {
+        $system = 'Anda adalah editor orisinalitas berita. Tulis ulang struktur kalimat dan urutan penyajian draft agar kemiripan frasa dengan sumber turun di bawah 25 persen. Gunakan hanya fakta atomik, checklist, dan maksimal dua kutipan pendek yang tersedia dalam source_analysis. Jangan melihat atau merekonstruksi paragraf sumber, jangan mengubah fakta atau makna kutipan, jangan menghapus atribusi dan tautan sumber. Pertahankan seluruh field JSON, SEO, serta status Needs Verification. Keluarkan JSON valid tanpa markdown.';
+        $input = ['source_facts' => data_get($payload, 'source_analysis.facts', []), 'source_quotes' => data_get($payload, 'source_analysis.quotes', []), 'source_attribution' => array_intersect_key((array) ($payload['source_analysis'] ?? []), array_flip(['source_url', 'source_media', 'source_title', 'attribution'])), 'current_similarity' => $similarity, 'current_draft' => $draft];
+
+        return [['role' => 'system', 'content' => $system], ['role' => 'user', 'content' => json_encode($input, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]];
     }
 
     private function articleWordTarget(array $payload): ?int
@@ -324,11 +434,14 @@ class AiGatewayService
         if ($type === 'detect_news_type') {
             return 'Anda adalah editor berita Indonesia. Klasifikasikan judul tanpa mengarang fakta. Keluarkan JSON valid tanpa markdown dengan fields: news_type (incident/government/business/feature/event/advertorial/explainer), news_type_label, subtype, confidence (0-100), required_data (array), warnings (array), review_status. Berikan warning privasi, anak, korban, praduga tak bersalah, atau verifikasi aparat jika relevan.';
         }
+        if ($type === 'analyze_source') {
+            return 'Anda adalah desk riset redaksi Indonesia. Analisis teks artikel sumber hanya untuk mengekstrak fakta; jangan menulis ulang artikel dan jangan menyalin paragraf. Keluarkan JSON valid tanpa markdown dengan fields: suggested_title (judul baru dengan sudut netral, bukan salinan judul), news_type (incident/government/business/feature/event/advertorial/explainer), news_type_label, subtype, facts (array fakta atomik yang dapat diverifikasi), quotes (maksimal 2 kutipan langsung pendek, masing-masing maksimal 25 kata, pertahankan makna dan narasumber), fact_checklist (object who, what, when, where, why, how), warnings (array), attribution (kalimat atribusi yang menyebut source_media). Jangan mengambil gambar, jangan menambah fakta, jangan menyimpulkan hal yang tidak tertulis, dan tetapkan kebutuhan verifikasi.';
+        }
         if ($type === 'generate_article') {
             return 'Anda adalah redaktur dan SEO content writer Indonesia. Tulis artikel hanya dari brief, fakta, sumber, outline, target pembaca, dan gaya pada input. Field length adalah target jumlah kata artikel antara 200 sampai 900 kata. Buat gabungan lead dan content_html sedekat mungkin dengan target tersebut dengan toleransi maksimal 10 persen; metadata SEO, alternatif judul, checklist, dan caption tidak dihitung. Patuhi field structure: standard memakai paragraf/heading biasa; listicle memakai tepat point_count elemen <section class="aina-article-point"><h2>Nomor. Judul Ide</h2><p>Penjelasan</p></section>; tutorial memakai format yang sama dengan judul langkah; faq memakai tepat point_count elemen <section class="aina-faq-item"><h2>Nomor. Pertanyaan</h2><p>Jawaban</p></section>. Nomori setiap H2 secara berurutan mulai dari 1. Untuk listicle, tutorial, dan FAQ, setiap poin atau jawaban wajib diberi penjelasan substantif sesuai point_word_count dengan toleransi 10 persen dalam satu atau beberapa paragraf, bukan hanya judul atau satu kalimat. Jika kebutuhan kata seluruh poin melebihi field length, kelengkapan point_count dan point_word_count lebih diprioritaskan. Untuk artikel ide, Anda boleh merumuskan gagasan kreatif yang relevan dengan brief, tetapi jangan mengarang statistik, hasil nyata, kutipan, sumber, atau klaim faktual. Lead harus diawali focus_keyword secara alami. Focus keyword wajib muncul persis di awal lead, dalam isi, dan sedikitnya satu H2. SEO title harus diawali focus_keyword, maksimal 60 karakter, serta untuk konten non-hard-news menggunakan kata sentimen dan power word Indonesia yang alami seperti "terbaik", "efektif", "panduan", atau "ampuh". Meta description 120-155 karakter serta memuat focus_keyword; slug ringkas maksimal 55 karakter dan memuat focus_keyword. Jika source_url tersedia, tambahkan satu outbound link dofollow kontekstual ke URL tersebut dan jangan membuat URL lain. Jika terdapat minimal tiga H2, buat Table of Contents Rank Math. Hindari keyword stuffing. content_html berisi HTML valid; jangan mengulang judul, lead, nama domain, atau memakai heading generik seperti "fakta utama". Keluarkan JSON valid tanpa markdown dengan fields: title, alternative_titles (array), lead, content_html, summary_points (array), verification_notes (array), fact_checklist (object: who, what, when, where, why, how, source_available, needs_verification), seo_title, meta_description, focus_keyword, slug, tags (array), category_suggestion, social_captions (object), review_status.';
         }
 
-        return 'Anda adalah redaktur berita Indonesia. Request type: '.$type.'. Gunakan hanya fakta input dan tandai data kosong untuk verifikasi. Tulis lead ringkas yang langsung memuat fakta terpenting. content_html hanya berisi paragraf lanjutan dengan tag <p>, tanpa mengulang judul atau lead, tanpa heading generik seperti "fakta utama", tanpa nama domain, dan tanpa markdown. Kutipan langsung ditulis sebagai paragraf tersendiri menggunakan tanda kutip Indonesia. Keluarkan JSON valid dengan fields: title, alternative_titles (array), lead, content_html, summary_points (array), verification_notes (array), fact_checklist (object dengan key who, what, when, where, why, how, source_available, needs_verification), seo_title, meta_description, focus_keyword, slug, tags, category_suggestion, social_captions, review_status. Isi setiap unsur 5W+1H hanya dari fakta input; gunakan string kosong jika datanya tidak tersedia. Jangan mempublikasikan atau mengarang fakta.';
+        return 'Anda adalah redaktur berita Indonesia. Request type: '.$type.'. Gunakan hanya fakta input dan tandai data kosong untuk verifikasi. Tulis lead ringkas yang langsung memuat fakta terpenting. content_html hanya berisi paragraf lanjutan dengan tag <p>, tanpa mengulang judul atau lead, tanpa heading generik seperti "fakta utama", tanpa nama domain, dan tanpa markdown. Kutipan langsung ditulis sebagai paragraf tersendiri menggunakan tanda kutip Indonesia. Jika source_analysis tersedia, tulis berita baru hanya dari facts, fact_checklist, dan maksimal dua quotes pendek; ubah susunan, sudut, serta struktur kalimat, jangan menyalin judul atau paragraf sumber, wajib sertakan atribusi dan source_url, dan tetapkan review_status Needs Verification. Keluarkan JSON valid dengan fields: title, alternative_titles (array), lead, content_html, summary_points (array), verification_notes (array), fact_checklist (object dengan key who, what, when, where, why, how, source_available, needs_verification), seo_title, meta_description, focus_keyword, slug, tags, category_suggestion, social_captions, review_status. Isi setiap unsur 5W+1H hanya dari fakta input; gunakan string kosong jika datanya tidak tersedia. Jangan mempublikasikan atau mengarang fakta.';
     }
 
     private function size(string $ratio): string
