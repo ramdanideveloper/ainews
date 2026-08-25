@@ -116,22 +116,26 @@ abstract class AI_News_Assistant_Provider_Base implements AI_News_Assistant_Prov
 	}
 	private function format_editorial_content( $content, $lead, array $input, $keyword ) {
 		$content = (string) $content;
+		$is_newsroom = ! empty( $input['news_type'] );
 		$content = preg_replace( '/<h[1-3][^>]*>\s*[^<]*(?:fakta utama|ringkasan utama|poin utama)[^<]*<\/h[1-3]>\s*/iu', '', $content );
+		if ( $is_newsroom ) {
+			$content = preg_replace( '/<h[2-4][^>]*>.*?<\/h[2-4]>\s*/isu', '', $content );
+			$content = preg_replace( '/<li[^>]*>(.*?)<\/li>/isu', '<p>$1</p>', $content );
+			$content = preg_replace( '/<\/?(?:ul|ol|nav)[^>]*>/iu', '', $content );
+		}
 		$host = (string) wp_parse_url( home_url( '/' ), PHP_URL_HOST );
 		$host = preg_replace( '/^www\./i', '', $host );
-		$location = $this->editorial_dateline( isset( $input['editorial_data'] ) ? (array) $input['editorial_data'] : array() );
 		$prefix = '<a href="' . esc_url( home_url( '/' ) ) . '">' . esc_html( $host ) . '</a>';
-		if ( '' !== $location ) $prefix .= ' | ' . esc_html( $location );
 		$prefix .= ' – ';
 		$lead_text = trim( wp_strip_all_tags( (string) $lead ) );
 		$input_title = trim( wp_strip_all_tags( (string) ( $input['title'] ?? '' ) ) );
 		if ( '' !== $input_title ) $lead_text = preg_replace( '/^' . preg_quote( $input_title, '/' ) . '\s*(?:—|–|-|:)\s*/iu', '', $lead_text );
 		if ( '' !== $keyword && false === stripos( $lead_text, $keyword ) && 'hard_news' !== ( $input['style'] ?? '' ) ) $lead_text = ucfirst( $keyword ) . '. ' . $lead_text;
-		if ( '' !== $keyword && ! preg_match( '/<h[2-4][^>]*>[^<]*' . preg_quote( $keyword, '/' ) . '/iu', $content ) ) {
+		if ( ! $is_newsroom && '' !== $keyword && ! preg_match( '/<h[2-4][^>]*>[^<]*' . preg_quote( $keyword, '/' ) . '/iu', $content ) ) {
 			if ( preg_match( '/<h2([^>]*)>/i', $content ) ) $content = preg_replace( '/<h2([^>]*)>/i', '<h2$1>' . esc_html( ucfirst( $keyword ) ) . ': ', $content, 1 );
 			else $content = '<h2>' . esc_html( ucfirst( $keyword ) ) . '</h2>' . $content;
 		}
-		$content = $this->add_table_of_contents( $content );
+		if ( ! $is_newsroom ) $content = $this->add_table_of_contents( $content );
 		$source_url = isset( $input['source_url'] ) ? esc_url( $input['source_url'] ) : '';
 		if ( '' !== $source_url && false === strpos( $content, $source_url ) ) $content .= '<p><strong>Sumber rujukan:</strong> <a href="' . $source_url . '" target="_blank" rel="noopener">Lihat sumber resmi</a>.</p>';
 		$opening = '<p>' . $prefix . esc_html( $lead_text ) . '</p>';
