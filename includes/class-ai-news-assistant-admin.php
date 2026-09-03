@@ -21,8 +21,7 @@ class AI_News_Assistant_Admin {
 		if ( false === strpos( $hook, 'ai-news-assistant' ) ) return;
 		$css_version = file_exists( AINA_DIR . 'assets/css/admin.css' ) ? (string) filemtime( AINA_DIR . 'assets/css/admin.css' ) : AINA_VERSION;
 		$js_version  = file_exists( AINA_DIR . 'assets/js/admin.js' ) ? (string) filemtime( AINA_DIR . 'assets/js/admin.js' ) : AINA_VERSION;
-		wp_enqueue_style( 'aina-fonts', 'https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,600;6..72,700&family=Outfit:wght@400;500;600;700&display=swap', array(), null );
-		wp_enqueue_style( 'aina-admin', AINA_URL . 'assets/css/admin.css', array( 'aina-fonts' ), $css_version );
+		wp_enqueue_style( 'aina-admin', AINA_URL . 'assets/css/admin.css', array(), $css_version );
 		$source_css = AINA_DIR . 'assets/css/source.css'; wp_enqueue_style( 'aina-source', AINA_URL . 'assets/css/source.css', array( 'aina-admin' ), file_exists( $source_css ) ? (string) filemtime( $source_css ) : AINA_VERSION );
 		wp_enqueue_script( 'aina-admin', AINA_URL . 'assets/js/admin.js', array(), $js_version, true );
 		if ( false !== strpos( $hook, 'ai-news-assistant-article' ) ) { $article_js = AINA_DIR . 'assets/js/article-generator.js'; wp_enqueue_script( 'aina-article-generator', AINA_URL . 'assets/js/article-generator.js', array(), file_exists( $article_js ) ? (string) filemtime( $article_js ) : AINA_VERSION, true ); }
